@@ -1,0 +1,13 @@
+2026-07-26T05:36:08.345Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-26T05:36:22.224Z [sentinelx-ai-backend] error: 404 - Not Found - /favicon.ico - /favicon.ico - GET - ::1
+2026-07-26T05:36:22.579Z [sentinelx-ai-backend] error: 404 - Not Found - /favicon.ico - /favicon.ico - GET - ::1
+2026-07-26T05:36:23.057Z [sentinelx-ai-backend] error: 404 - Not Found - /favicon.ico - /favicon.ico - GET - ::1
+2026-07-26T05:36:23.144Z [sentinelx-ai-backend] error: 404 - Not Found - /favicon.ico - /favicon.ico - GET - ::1
+2026-07-26T05:36:23.224Z [sentinelx-ai-backend] error: 404 - Not Found - /favicon.ico - /favicon.ico - GET - ::1
+2026-07-26T05:36:23.305Z [sentinelx-ai-backend] error: 404 - Not Found - /favicon.ico - /favicon.ico - GET - ::1
+2026-07-26T05:36:23.388Z [sentinelx-ai-backend] error: 404 - Not Found - /favicon.ico - /favicon.ico - GET - ::1
+2026-07-26T05:36:23.472Z [sentinelx-ai-backend] error: 404 - Not Found - /favicon.ico - /favicon.ico - GET - ::1
+2026-07-26T05:36:28.180Z [sentinelx-ai-backend] error: 404 - Not Found - /api - /api - GET - ::1
+2026-07-26T05:38:03.793Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-26T10:50:17.660Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-26T10:50:24.021Z [sentinelx-ai-backend] info: MongoDB Connected: localhost

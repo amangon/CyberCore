@@ -1,0 +1,86 @@
+2026-07-25T07:36:31.163Z [sentinelx-ai-backend] info: MongoDB Connected: ac-j9fptla-shard-00-00.ygic0zf.mongodb.net
+2026-07-25T07:37:07.912Z [sentinelx-ai-backend] error: 404 - Not Found - /favicon.ico - /favicon.ico - GET - ::1
+2026-07-25T08:49:38.256Z [sentinelx-ai-backend] info: MongoDB Connected: ac-j9fptla-shard-00-00.ygic0zf.mongodb.net
+2026-07-25T08:49:49.819Z [sentinelx-ai-backend] info: MongoDB Connected: ac-j9fptla-shard-00-00.ygic0zf.mongodb.net
+2026-07-25T08:50:27.176Z [sentinelx-ai-backend] info: MongoDB Connected: ac-j9fptla-shard-00-00.ygic0zf.mongodb.net
+2026-07-25T08:50:29.838Z [sentinelx-ai-backend] info: MongoDB Connected: ac-j9fptla-shard-00-00.ygic0zf.mongodb.net
+2026-07-25T08:50:35.623Z [sentinelx-ai-backend] info: MongoDB Connected: ac-j9fptla-shard-00-00.ygic0zf.mongodb.net
+2026-07-25T08:51:39.174Z [sentinelx-ai-backend] info: MongoDB Connected: ac-j9fptla-shard-00-00.ygic0zf.mongodb.net
+2026-07-25T09:03:21.981Z [sentinelx-ai-backend] info: MongoDB Connected: ac-j9fptla-shard-00-00.ygic0zf.mongodb.net
+2026-07-25T09:03:38.435Z [sentinelx-ai-backend] info: MongoDB Connected: ac-j9fptla-shard-00-00.ygic0zf.mongodb.net
+2026-07-25T09:03:53.921Z [sentinelx-ai-backend] info: MongoDB Connected: ac-j9fptla-shard-00-00.ygic0zf.mongodb.net
+2026-07-25T09:04:03.661Z [sentinelx-ai-backend] info: MongoDB Connected: ac-j9fptla-shard-00-00.ygic0zf.mongodb.net
+2026-07-25T09:05:06.546Z [sentinelx-ai-backend] info: MongoDB Connected: ac-j9fptla-shard-00-00.ygic0zf.mongodb.net
+2026-07-25T09:05:54.191Z [sentinelx-ai-backend] info: MongoDB Connected: ac-j9fptla-shard-00-00.ygic0zf.mongodb.net
+2026-07-25T09:06:07.191Z [sentinelx-ai-backend] info: MongoDB Connected: ac-j9fptla-shard-00-00.ygic0zf.mongodb.net
+2026-07-25T09:07:38.297Z [sentinelx-ai-backend] info: MongoDB Connected: ac-j9fptla-shard-00-00.ygic0zf.mongodb.net
+2026-07-25T09:08:17.671Z [sentinelx-ai-backend] info: MongoDB Connected: ac-j9fptla-shard-00-00.ygic0zf.mongodb.net
+2026-07-25T09:08:21.110Z [sentinelx-ai-backend] info: MongoDB Connected: ac-j9fptla-shard-00-00.ygic0zf.mongodb.net
+2026-07-25T09:09:17.937Z [sentinelx-ai-backend] info: MongoDB Connected: ac-j9fptla-shard-00-00.ygic0zf.mongodb.net
+2026-07-25T09:29:09.952Z [sentinelx-ai-backend] info: MongoDB Connected: ac-j9fptla-shard-00-00.ygic0zf.mongodb.net
+2026-07-25T09:30:48.353Z [sentinelx-ai-backend] info: MongoDB Connected: ac-j9fptla-shard-00-00.ygic0zf.mongodb.net
+2026-07-25T09:57:03.987Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T09:57:20.786Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T10:50:00.286Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T10:54:27.569Z [sentinelx-ai-backend] error: 404 - Not Found - /api/health - /api/health - GET - ::1
+2026-07-25T10:54:27.636Z [sentinelx-ai-backend] error: 404 - Not Found - /favicon.ico - /favicon.ico - GET - ::1
+2026-07-25T10:54:35.432Z [sentinelx-ai-backend] error: 404 - Not Found - /api/health - /api/health - GET - ::1
+2026-07-25T10:55:14.032Z [sentinelx-ai-backend] error: 404 - Not Found - /api/health - /api/health - GET - ::1
+2026-07-25T10:58:34.518Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T16:19:02.412Z [sentinelx-ai-backend] info: Starting ip scan for: 8.8.8.8
+2026-07-25T16:19:10.282Z [sentinelx-ai-backend] error: Pulsedive lookup failed for 8.8.8.8: (data.attributes || []).slice is not a function
+2026-07-25T16:25:06.326Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T16:25:36.726Z [sentinelx-ai-backend] error: API Error: Not authorized to access this route
+2026-07-25T16:27:07.100Z [sentinelx-ai-backend] info: Starting ip scan for: 1.1.1.1
+2026-07-25T16:27:22.409Z [sentinelx-ai-backend] info: Starting ip scan for: 8.8.8.8
+2026-07-25T16:28:18.421Z [sentinelx-ai-backend] info: Starting url scan for: https://example.com
+2026-07-25T16:28:24.065Z [sentinelx-ai-backend] error: OTX URL lookup failed for https://example.com: Request failed with status code 400
+2026-07-25T16:28:44.602Z [sentinelx-ai-backend] error: URLScan.io scan failed for https://example.com: Request failed with status code 403
+2026-07-25T16:28:51.565Z [sentinelx-ai-backend] info: Returning cached scan result for url:https://example.com
+2026-07-25T16:34:47.849Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T16:34:58.997Z [sentinelx-ai-backend] info: Starting ip scan for: 8.8.8.8
+2026-07-25T16:36:20.120Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T16:39:13.915Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T16:39:15.367Z [sentinelx-ai-backend] error: 404 - Not Found - /api/auth - /api/auth - GET - ::1
+2026-07-25T16:39:15.433Z [sentinelx-ai-backend] error: 404 - Not Found - /favicon.ico - /favicon.ico - GET - ::1
+2026-07-25T16:39:34.599Z [sentinelx-ai-backend] error: 404 - Not Found - /api/scan - /api/scan - GET - ::1
+2026-07-25T16:53:49.983Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T16:54:43.425Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T16:54:51.861Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T16:55:57.304Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T16:56:04.845Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T16:56:13.326Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T16:57:39.942Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T16:57:50.589Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T16:58:00.667Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T16:58:27.061Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T16:59:21.248Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T17:00:03.677Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T17:00:13.797Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T17:00:52.746Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T17:01:06.139Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T17:01:15.507Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T17:02:14.163Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T17:02:43.161Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T17:02:56.083Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T17:03:09.601Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T17:05:20.519Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T17:06:16.032Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T17:07:03.512Z [sentinelx-ai-backend] error: 404 - Not Found - /api - /api - GET - ::1
+2026-07-25T17:35:00.160Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T17:36:26.825Z [sentinelx-ai-backend] error: API Error: Not authorized to access this route
+2026-07-25T17:39:28.040Z [sentinelx-ai-backend] error: API Error: Not authorized to access this route
+2026-07-25T17:41:44.292Z [sentinelx-ai-backend] error: 404 - Not Found - /api/test/virustotal - /api/test/virustotal - POST - ::1
+2026-07-25T17:41:47.732Z [sentinelx-ai-backend] error: 404 - Not Found - /api/test/virustotal - /api/test/virustotal - GET - ::1
+2026-07-25T17:44:35.635Z [sentinelx-ai-backend] error: 404 - Not Found - /api/health/apis - /api/health/apis - GET - ::1
+2026-07-25T17:44:39.066Z [sentinelx-ai-backend] error: 404 - Not Found - /api/health/apis - /api/health/apis - POST - ::1
+2026-07-25T17:44:46.950Z [sentinelx-ai-backend] error: 404 - Not Found - /api/health/apis - /api/health/apis - PUT - ::1
+2026-07-25T17:44:51.983Z [sentinelx-ai-backend] error: 404 - Not Found - /api/health/apis - /api/health/apis - GET - ::1
+2026-07-25T17:44:52.561Z [sentinelx-ai-backend] error: 404 - Not Found - /api/health/apis - /api/health/apis - GET - ::1
+2026-07-25T17:44:54.431Z [sentinelx-ai-backend] error: 404 - Not Found - /api/health/apis - /api/health/apis - GET - ::1
+2026-07-25T18:10:57.732Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T18:15:11.314Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T18:15:54.865Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T18:16:37.164Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T18:17:56.643Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
+2026-07-25T18:22:01.707Z [sentinelx-ai-backend] info: MongoDB Connected: localhost
