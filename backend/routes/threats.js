@@ -11,25 +11,31 @@ const Vulnerability = require('../models/Vulnerability');
 const YaraRule = require('../models/YaraRule');
 
 // ======================================================
-// PUBLIC ROUTE (No Login Required)
-// GET /api/threats?limit=100
+// PUBLIC ROUTES (No Login Required)
 // ======================================================
+
+// GET /api/threats?limit=100
+// Returns the aggregated summary payload (feed, stats, malware, cves,
+// trend, aptGroups, iocs) so the Threat Intelligence Center frontend
+// renders real data without requiring login.
 router.get('/', async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 100;
-    const threats = await ThreatIntelligence.find()
-      .sort({ createdAt: -1 })
-      .limit(limit);
-
-    res.status(200).json({
-      success: true,
-      total: threats.length,
-      data: threats
-    });
+    await threatController.getThreatIntelligenceSummary(req, res);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// ======================================================
+// PUBLIC READ-ONLY AGGREGATED SUMMARY
+// GET /api/threats/summary
+//
+// Returns ONLY the aggregated dashboard data required by the
+// Threat Intelligence Center frontend. No sensitive internal
+// intelligence, API metadata, or administrative information is
+// exposed. All values derive from persisted backend data.
+// ======================================================
+router.get('/summary', threatController.getThreatIntelligenceSummary);
 
 // ======================================================
 // ALL ROUTES BELOW REQUIRE LOGIN

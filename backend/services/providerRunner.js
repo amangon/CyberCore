@@ -11,6 +11,20 @@
 
 const logger = require('../utils/logger');
 
+// ─── Provider status enum ────────────────────────────────────────────────────
+// Explicit, stable machine-readable states returned by the backend. The
+// frontend MUST render UI from these values — it must never infer "Error".
+// A disabled/missing-key provider is `not_configured`, which is NOT an error.
+const PROVIDER_STATUS = {
+  COMPLETED: 'completed',
+  NOT_CONFIGURED: 'not_configured',
+  AUTH_FAILED: 'authentication_failed',
+  TIMEOUT: 'timeout',
+  RATE_LIMITED: 'rate_limited',
+  SERVICE_UNAVAILABLE: 'service_unavailable',
+  NETWORK_ERROR: 'network_error',
+};
+
 // ─── HTTP status → human-readable reason ─────────────────────────────────────
 const STATUS_REASONS = {
   400: 'No Result',
@@ -22,7 +36,11 @@ const STATUS_REASONS = {
   500: 'Provider Internal Error',
 };
 
-const RETRYABLE_STATUS = new Set([408, 429]);
+const RETRYABLE_STATUS = new Set([
+  PROVIDER_STATUS.TIMEOUT,
+  PROVIDER_STATUS.RATE_LIMITED,
+  PROVIDER_STATUS.NETWORK_ERROR,
+]);
 const RETRYABLE_CODES = new Set(['ENOTFOUND', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ENETUNREACH', 'EPIPE']);
 
 /**
@@ -65,25 +83,38 @@ function extractStatusFromMessage(message) {
 }
 
 /**
- * Map an error to a normalized provider status.
+ * Map an error to a normalized provider status using the explicit status enum.
+ * Every mapping returns one of the stable PROVIDER_STATUS values so the
+ * frontend can render UI without re-inferring "Error".
  */
 function mapError(error) {
-  if (!error) return { status: 'unknown', reason: 'Unknown error' };
+  if (!error) return { status: 'error', reason: 'Unknown error' };
 
   const code = error.code;
   const status = error.response?.status || extractStatusFromMessage(error.message);
 
-  if (status && STATUS_REASONS[status]) {
-    return { status: String(status), reason: STATUS_REASONS[status], code: String(status) };
+  // Authentication failures (invalid/expired key, missing credentials).
+  if (status === 401 || status === 403) {
+    return { status: PROVIDER_STATUS.AUTH_FAILED, reason: STATUS_REASONS[status], code: String(status) };
   }
+  // Timeouts.
+  if (status === 408 || code === 'ECONNABORTED' || /timeout/i.test(String(error.message || ''))) {
+    return { status: PROVIDER_STATUS.TIMEOUT, reason: 'Timeout', code: 'ECONNABORTED' };
+  }
+  // Rate limited / quota exceeded.
+  if (status === 429) {
+    return { status: PROVIDER_STATUS.RATE_LIMITED, reason: STATUS_REASONS[status], code: String(status) };
+  }
+  // Network / connection failures.
   if (code && RETRYABLE_CODES.has(code)) {
-    return { status: 'network', reason: 'Connection Failed', code };
+    return { status: PROVIDER_STATUS.NETWORK_ERROR, reason: 'Connection Failed', code };
   }
-  if (!error.response && (code === 'ECONNABORTED' || /timeout/i.test(String(error.message || '')))) {
-    return { status: '408', reason: 'Timeout', code: 'ECONNABORTED' };
-  }
+  // Provider-side failures (5xx, "No Data", "No Result").
   if (status && status >= 500) {
-    return { status: String(status), reason: 'Provider Internal Error', code: String(status) };
+    return { status: PROVIDER_STATUS.SERVICE_UNAVAILABLE, reason: 'Provider Internal Error', code: String(status) };
+  }
+  if (status === 404 || status === 400) {
+    return { status: PROVIDER_STATUS.SERVICE_UNAVAILABLE, reason: STATUS_REASONS[status], code: String(status) };
   }
   return { status: 'error', reason: error.message || 'Provider Error', code: code || 'ERR' };
 }
@@ -149,7 +180,7 @@ const startedAt = Date.now();
   let lastError = null;
   let lastStatus = null;
 
-  const base = {
+const base = {
     provider,
     label: label || provider,
     available: Boolean(enabled),
@@ -165,12 +196,15 @@ const startedAt = Date.now();
     data: null,
   };
 
-  if (!enabled) {
+if (!enabled) {
+    // A provider that is intentionally disabled / missing an API key is
+    // NOT an error. Mark it `not_configured` and never attempt a request.
     return {
       ...base,
-      status: 'unavailable',
+      status: PROVIDER_STATUS.NOT_CONFIGURED,
       error: configError || 'Not configured',
-      responseTime: Date.now() - startedAt,
+      responseTime: 0,
+      lastUpdated: null,
     };
   }
 
@@ -227,12 +261,13 @@ for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         continue;
       }
 
-      return {
+return {
         ...base,
         success: false,
         status: mapped.status,
         error: mapped.reason,
         responseTime: Date.now() - startedAt,
+        lastUpdated: new Date().toISOString(),
       };
     }
   }
@@ -244,6 +279,7 @@ for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     status: lastStatus || 'error',
     error: lastError?.message || 'Provider failed',
     responseTime: Date.now() - startedAt,
+    lastUpdated: new Date().toISOString(),
   };
 }
 
@@ -283,6 +319,7 @@ module.exports = {
   runProviders,
   withTimeout,
   mapError,
+  PROVIDER_STATUS,
   STATUS_REASONS,
   RETRYABLE_STATUS,
   RETRYABLE_CODES,

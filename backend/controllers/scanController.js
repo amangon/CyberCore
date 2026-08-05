@@ -1,6 +1,7 @@
 const asyncHandler = require('../middleware/async');
 const ErrorResponse = require('../utils/errorResponse');
 const logger = require('../utils/logger');
+const mongoose = require('mongoose');
 const ScanRecord = require('../models/ScanRecord');
 const IOC = require('../models/IOC');
 const ThreatIntelligence = require('../models/ThreatIntelligence');
@@ -70,11 +71,12 @@ function detectInputType(value) {
 }
 
 /**
- * Determine risk level from threat score.
- * Thresholds are evidence-based and consistent with the score mapping.
+ * Determine risk level from the final evidence-based verdict.
+ * Thresholds are aligned with the rules: Safe 0-20, Low 21-40,
+ * Medium 41-60, High 61-80, Critical 81-100.
  */
 function getRiskLevel(score) {
-  if (score <= 0) return 'Safe';
+  if (score <= 20) return 'Safe';
   if (score <= 40) return 'Low';
   if (score <= 60) return 'Medium';
   if (score <= 80) return 'High';
@@ -82,10 +84,48 @@ function getRiskLevel(score) {
 }
 
 /**
+ * Determine whether a provider is a "malicious evidence" source.
+ * Only COMPLETED providers reporting real detections count as malicious.
+ * Error / timeout / forbidden / auth-failed / not-configured / no-data /
+ * no-match providers are UNAVAILABLE sources — they never count as malicious
+ * (and never count as clean either).
+ */
+function isUnavailableProvider(p) {
+  if (!p) return true;
+  const status = String(p.status || '').toLowerCase();
+  const available = Boolean(p.available || p.success || p.scanned);
+  if (!available) return true;
+  if (status === 'no_match' || status === 'no data' || status === 'not found') return true;
+  return false;
+}
+
+function providerIsMalicious(p) {
+  if (isUnavailableProvider(p)) return false;
+  const verdict = String(p.verdict || '').toLowerCase();
+  if (verdict === 'malicious') return true;
+  // Completed providers that report a real detection count/threat score.
+  const detections = Number(p.detections) || 0;
+  const score = Number(p.threatScore) || 0;
+  if (detections > 0) return true;
+  if (score >= 80) return true;
+  return false;
+}
+
+function providerIsSuspicious(p) {
+  if (isUnavailableProvider(p)) return false;
+  if (providerIsMalicious(p)) return false;
+  const verdict = String(p.verdict || '').toLowerCase();
+  if (verdict === 'suspicious') return true;
+  const score = Number(p.threatScore) || 0;
+  return score >= 40 && score < 80;
+}
+
+/**
  * Build a fully evidence-based detection summary from the actual provider
  * responses. Risk is only ever derived from real detections reported by the
- * providers — never inferred. This is the SINGLE source of truth for every
- * downstream field (status, risk level, detection status, engines, etc.).
+ * providers — never inferred and NEVER from failed/unavailable sources.
+ * This is the SINGLE source of truth for every downstream field (status, risk
+ * level, detection status, engines, AI verdict).
  *
  * @param {string} scanType - 'hash' | 'ip' | 'url' | 'domain' | 'file'
  * @param {Object} sources - The aggregated provider sources
@@ -110,6 +150,7 @@ function buildDetectionSummary(scanType, sources) {
   // 3. AbuseIPDB (IP scans only — real reported abuse confidence)
   const abuseipdb = sources.abuseipdb || {};
   const abuseConfidence = Number(abuseipdb.abuseConfidenceScore) || 0;
+  const abuseTotalReports = Number(abuseipdb.totalReports) || 0;
 
   // 4. ThreatFox (real IOC match)
   const threatFox = sources.abusechThreatFox || {};
@@ -118,6 +159,21 @@ function buildDetectionSummary(scanType, sources) {
   // 5. MalwareBazaar (real malware sample match)
   const malwareBazaar = sources.abusechMalwareBazaar || {};
   const malwareBazaarFound = malwareBazaar.found === true;
+
+  // Collect all provider entries (normalized by normalizeSource).
+  const allProviders = Object.entries(sources).filter(([k]) => k !== 'fileInfo').map(([, v]) => v);
+
+  // Count REAL malicious / suspicious / clean / unavailable providers.
+  // Unavailable providers (error/timeout/auth/forbidden/not-configured/no-data)
+  // are ignored entirely — they never inflate the malicious count.
+  const maliciousProviders = allProviders.filter(providerIsMalicious).length;
+  const suspiciousProviders = allProviders.filter(providerIsSuspicious).length;
+  const cleanProviders = allProviders.filter((p) => {
+    if (isUnavailableProvider(p)) return false;
+    if (providerIsMalicious(p) || providerIsSuspicious(p)) return false;
+    return true;
+  }).length;
+  const unavailableProviders = allProviders.filter(isUnavailableProvider).length;
 
   // Threat family (only from a real provider match)
   let threatFamily = '';
@@ -133,7 +189,7 @@ function buildDetectionSummary(scanType, sources) {
     );
   }
 
-  // Detection engines "X/Y" and count
+  // Detection engines "X/Y" and count (comes directly from VirusTotal).
   const detectionCount = vtMalicious + vtSuspicious;
   const detectionEngines = vtTotal > 0 ? `${detectionCount}/${vtTotal}` : '';
 
@@ -152,41 +208,51 @@ function buildDetectionSummary(scanType, sources) {
     reputation = String(otx.reputation);
   }
 
-  // ---- Evidence-based risk score ----
-  // Start at 0. Only add risk when a provider actually reports detections.
+  // ---- Evidence-based verdict (provider-count + real signals) ----
+  // Rules:
+  //   3+ malicious providers  → Malicious, risk 90-100
+  //   1-2 malicious providers → Malicious, risk 70-89
+  //   >=1 malicious           → at least Malicious
+  //   1+ suspicious           → Suspicious, risk 40-60
+  //   no detections + clean   → Safe, risk 0-20
   let riskScore = 0;
+  let status = 'Safe';
+  let aiVerdict = 'Safe';
 
-  // VirusTotal: strongest signal. Uses the real malicious+suspicious ratio.
-  if (vtTotal > 0) {
-    const vtRatio = detectionCount / vtTotal;
-    riskScore = Math.max(riskScore, Math.round(vtRatio * 100));
+  if (maliciousProviders >= 3) {
+    riskScore = Math.min(100, 90 + (maliciousProviders - 3) * 3);
+    status = 'Malicious';
+    aiVerdict = 'Malicious';
+  } else if (maliciousProviders === 2) {
+    riskScore = 85;
+    status = 'Malicious';
+    aiVerdict = 'Malicious';
+  } else if (maliciousProviders === 1) {
+    riskScore = 75;
+    status = 'Malicious';
+    aiVerdict = 'Malicious';
+  } else if (suspiciousProviders >= 1) {
+    riskScore = Math.min(60, 40 + suspiciousProviders * 5);
+    status = 'Suspicious';
+    aiVerdict = 'Suspicious';
+  } else {
+    // No malicious/suspicious providers. Optional secondary signals only when
+    // actually present — but never enough to override a clean consensus.
+    let signalMax = 0;
+    if (vtTotal > 0 && detectionCount === 0) signalMax = 0; // clean VT
+    if (abuseConfidence > 0 && abuseConfidence <= 25) signalMax = Math.max(signalMax, 10);
+    else if (abuseConfidence > 25) signalMax = Math.max(signalMax, Math.min(abuseConfidence * 0.5, 30));
+    if (otxPulseCount > 0 && otxPulseCount <= 2) signalMax = Math.max(signalMax, 15);
+    else if (otxPulseCount > 2) signalMax = Math.max(signalMax, Math.min(otxPulseCount * 8, 35));
+
+    riskScore = Math.min(20, signalMax);
+    status = riskScore <= 20 ? 'Safe' : status;
+    aiVerdict = riskScore <= 20 ? 'Safe' : 'Low Risk';
   }
-
-  // OTX: pulse count directly indicates real indicators of compromise.
-  if (otxPulseCount > 0) {
-    riskScore = Math.max(riskScore, Math.min(otxPulseCount * 10, 100));
-  }
-
-  // AbuseIPDB: real reported abuse confidence (IP scans only).
-  if (abuseConfidence > 0) {
-    riskScore = Math.max(riskScore, Math.min(abuseConfidence, 100));
-  }
-
-  // ThreatFox / MalwareBazaar: a real match is a confirmed detection.
-  if (threatFoxFound) riskScore = Math.max(riskScore, 60);
-  if (malwareBazaarFound) riskScore = Math.max(riskScore, 70);
 
   riskScore = Math.min(100, Math.round(riskScore));
 
-  // ---- Derive status / detection status / risk level / AI verdict ----
-  const riskLevel = getRiskLevel(riskScore);
-
-  let status;
-  if (riskScore === 0) status = 'Safe';
-  else if (riskScore <= 40) status = 'Low';
-  else if (riskScore <= 60) status = 'Suspicious';
-  else status = 'Malicious';
-
+  // Detection status (real evidence only).
   let detectionStatus;
   if (detectionCount > 0) {
     detectionStatus = `Malicious (${detectionCount} engine${detectionCount === 1 ? '' : 's'})`;
@@ -200,11 +266,7 @@ function buildDetectionSummary(scanType, sources) {
     detectionStatus = 'No Threat Detected';
   }
 
-  let aiVerdict;
-  if (riskScore === 0) aiVerdict = 'Safe';
-  else if (riskScore <= 40) aiVerdict = 'Low Risk';
-  else if (riskScore <= 60) aiVerdict = 'Suspicious';
-  else aiVerdict = 'Malicious';
+  const riskLevel = getRiskLevel(riskScore);
 
   return {
     riskScore,
@@ -217,6 +279,11 @@ function buildDetectionSummary(scanType, sources) {
     blacklistStatus,
     reputation,
     aiVerdict,
+    // Expose aggregation counts for the UI / provider cards.
+    maliciousProviders,
+    suspiciousProviders,
+    cleanProviders,
+    unavailableProviders,
   };
 }
 
@@ -614,6 +681,13 @@ function normalizeSource(raw, provider, label) {
   // provider must NEVER be labelled clean (that would be "Error + CLEAN").
   const verdict = available && !reportedNoMatch ? verdictFromScore(score) : 'unknown';
 
+  // Preserve the explicit provider status enum from providerRunner. A disabled
+  // provider (not_configured) is NOT an error and must stay labelled as such.
+  let finalStatus = status;
+  if (available) {
+    finalStatus = reportedNoMatch ? 'no_match' : 'completed';
+  }
+
   return {
     // Raw provider payload at the top level (preserves existing consumers).
     ...rawData,
@@ -622,7 +696,7 @@ function normalizeSource(raw, provider, label) {
     label: label || provider,
     available,
     success: available,
-    status: available ? (reportedNoMatch ? 'no_match' : 'completed') : (raw.error ? 'error' : status),
+    status: finalStatus,
     verdict,
     confidence: available && !reportedNoMatch ? Math.min(100, Math.max(0, score)) : 0,
     detections: available && typeof raw.data?.detections === 'number' ? raw.data.detections : 0,
@@ -1009,7 +1083,7 @@ async function scanHash(hash) {
 exports.getScan = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
 
-  // Check cache for scan result
+  // Check cache for scan result first (fast path for recently scanned values).
   const cached = getCached(id);
   if (cached) {
     return res.status(200).json({
@@ -1019,11 +1093,43 @@ exports.getScan = asyncHandler(async (req, res, next) => {
     });
   }
 
+  // Fall back to the persisted record in MongoDB so "View Result" works for
+  // any history item, even after the in-memory cache has expired.
+  if (mongoose.Types.ObjectId.isValid(id)) {
+    const record = await ScanRecord.findById(id).lean();
+    if (record) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          id: record._id.toString(),
+          scanType: record.scanType,
+          value: record.value,
+          overallThreatScore: record.overallThreatScore,
+          riskLevel: record.riskLevel,
+          status: record.status,
+          threatLevel: record.threatLevel,
+          detectionStatus: record.detectionStatus,
+          detectionEngines: record.detectionEngines,
+          detectionCount: record.detectionCount,
+          threatFamily: record.threatFamily,
+          blacklistStatus: record.blacklistStatus,
+          reputation: record.reputation,
+          aiVerdict: record.aiVerdict,
+          sources: record.sources,
+          summary: record.summary,
+          scannedAt: record.scannedAt,
+          createdAt: record.createdAt,
+        },
+        source: 'mongo'
+      });
+    }
+  }
+
   res.status(200).json({
-    success: true,
+    success: false,
     data: {
       scanId: id,
-      message: 'Scan result not found in cache. Please perform a new scan.',
+      message: 'Scan result not found. Please perform a new scan.',
       scannedAt: new Date().toISOString()
     }
   });
