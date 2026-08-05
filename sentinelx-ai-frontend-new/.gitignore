@@ -30,8 +30,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files
+.env*.local
+.env.development
+.env.test
+# .env.production is committed so Render picks up the correct API URL at build time
 
 # vercel
 .vercel

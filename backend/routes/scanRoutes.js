@@ -3,11 +3,6 @@ const router = express.Router();
 const multer = require('multer');
 const {
   scan,
-  scanFile,
-  scanUrl,
-  scanIP,
-  scanDomain,
-  scanHash,
   getScan,
   getScanHistory,
   getScanReport

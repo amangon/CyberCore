@@ -535,3 +535,5 @@
 2026-08-05T16:36:04.240Z [sentinelx-ai-backend] info: MongoDB Host: ac-fpap7ze-shard-00-00.apyihe4.mongodb.net
 2026-08-05T16:36:04.242Z [sentinelx-ai-backend] info: MongoDB Database: sentinelx-ai
 2026-08-05T16:36:04.250Z [sentinelx-ai-backend] info: MongoDB URI: mongodb+srv://sihteam1176_db_user:J2QZcV1l8nSf2BZn@zeai-project.apyihe4.mongodb.net/sentinelx-ai?retryWrites=true&w=majority
+2026-08-05T16:50:43.331Z [sentinelx-ai-backend] error: 404 - Not Found - /api - /api - GET - ::1
+2026-08-05T16:51:20.802Z [sentinelx-ai-backend] error: 404 - Not Found - /scan - /scan - GET - ::1
