@@ -11,8 +11,8 @@ const options = {
     },
     servers: [
       {
-        url: process.env.BASE_URL || 'http://localhost:5000/api',
-        description: 'Development server',
+        url: process.env.BASE_URL || 'https://cybercore-backend-csqd.onrender.com/api',
+        description: 'Production server',
       },
     ],
     components: {

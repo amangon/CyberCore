@@ -2,6 +2,7 @@ const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const socketEvents = require('../utils/socketEvents');
+const { corsOptions } = require('../config/corsOptions');
 
 /**
  * Initialize Socket.io server
@@ -9,11 +10,7 @@ const socketEvents = require('../utils/socketEvents');
  */
 function initializeSocket(httpServer) {
   const io = new Server(httpServer, {
-    cors: {
-      origin: process.env.CLIENT_URL || 'http://localhost:3000',
-      methods: ['GET', 'POST'],
-      credentials: true
-    }
+    cors: corsOptions,
   });
 
   // Set the IO instance in our socket events utility

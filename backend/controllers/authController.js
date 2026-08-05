@@ -166,7 +166,7 @@ exports.forgotPassword = async (req, res, next) => {
     const resetToken = user.getResetPasswordToken();
     await user.save({ validateBeforeSave: false });
 
-    const resetUrl = `${process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000'}/reset-password/${resetToken}`;
+    const resetUrl = `${process.env.FRONTEND_URL || process.env.CLIENT_URL || 'https://cybercore-frontend-vuje.onrender.com'}/reset-password/${resetToken}`;
 
     const message = `
       <h2>Password Reset Request</h2>

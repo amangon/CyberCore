@@ -3,9 +3,14 @@ import { getToken, removeToken } from "./auth";
 
 /**
  * Base URL of the SentinelX AI backend API.
- * Defaults to the local development backend. Override with NEXT_PUBLIC_API_BASE_URL.
+ *
+ * Production default is the Render-hosted backend. Override with the
+ * NEXT_PUBLIC_API_BASE_URL environment variable (see .env.local.example).
+ * For local development, create a `.env.local` with:
+ *
+ *   NEXT_PUBLIC_API_BASE_URL=http://localhost:5001/api
  */
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5001/api";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://cybercore-backend-csqd.onrender.com/api";
 
 /**
  * Reusable Axios instance configured for the SentinelX AI backend.

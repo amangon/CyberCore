@@ -1,38 +1,15 @@
-# SentinelX AI — Remaining Issues Fix Plan
+# SentinelX AI — Render Production Deployment Fix
 
-Status legend: `[ ]` pending · `[x]` done
+## Steps
 
-## 1. Profile Picture Upload (dead Camera button)
-- [x] Wire the Camera button with a hidden file input
-- [x] Add image preview before upload
-- [x] Call `settingsService.uploadAvatar(file)` on selection
-- [x] Refresh `profile.avatarUrl` after upload (persists + shows after login)
-
-## 2. API Key Management (dead buttons)
-- [x] Wire "Create new key" button — add generate form (name/description/expiration)
-- [x] Call `settingsService.generateApiKey`
-- [x] Show the new key once with a Copy button
-- [x] Add per-key actions: Copy, Revoke, Delete, Regenerate
-
-## 3. Threat Intelligence Center pipeline
-- [x] Backend `GET /api/threats` + `/summary` → `getThreatIntelligenceSummary`
-- [x] Aggregates real ScanRecord / ThreatIntelligence / Vulnerability / IOC / Alert data
-- [x] Country + coordinate extraction for the Global Threat Map
-- [x] Automatic persistence after every successful scan (scanController)
-- [x] Frontend `threat.service.ts` maps to `{feed, stats, malware, cves, trend, aptGroups}`
-
-## 4. Provider Status (Scan Result page) — layout fix
-- [x] Grid: 2 columns desktop/tablet, 1 column mobile (`sm:grid-cols-2`)
-- [x] Card: `flex flex-col justify-between min-h-[320px] w-full min-w-0 overflow-hidden`
-- [x] Padding 24px (`p-6`), rounded 20px (`rounded-[20px]`)
-- [x] Provider name uses `truncate`
-- [x] Reason box uses `break-words` — never overflows
-- [x] Latency stays on one line (`whitespace-nowrap shrink-0`)
-- [x] Health no longer overlaps (separate box, `ml-auto`)
-- [x] Progress bar always at bottom (`justify-between`)
-- [x] Removed fixed heights / absolute positioning / negative margins
-
-## 5. Final QA
-- [x] `npm run build` — PASS
-- [x] `npm run lint` — 0 errors (pre-existing warnings only)
-- [x] `npx tsc --noEmit` — PASS (exit 0)
+- [x] Explore repo & identify all localhost/production references
+- [ ] 1. Fix `sentinelx-ai-frontend-new/src/lib/api.ts` — default API base URL → Render backend
+- [ ] 2. Fix `sentinelx-ai-frontend-new/src/services/settings.service.ts` — webhookEndpoint uses centralized API_BASE_URL
+- [ ] 3. Fix `backend/server.js` — CORS from CLIENT_URL env (allow Render frontend; localhost only in dev)
+- [ ] 4. Fix `backend/sockets/index.js` — Socket.io CORS from CLIENT_URL env
+- [ ] 5. Fix `backend/config/swagger.js` — Swagger server URL → Render backend fallback
+- [ ] 6. Fix `backend/controllers/authController.js` — reset URL fallback → Render frontend
+- [ ] 7. Update `backend/.env.example` — document CLIENT_URL production default
+- [ ] 8. Add `sentinelx-ai-frontend-new/.env.local.example` — document NEXT_PUBLIC_API_BASE_URL
+- [ ] 9. Verify no production localhost references remain (grep)
+- [ ] 10. Run frontend production build

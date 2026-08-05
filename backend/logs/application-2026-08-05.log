@@ -491,3 +491,47 @@
 2026-08-05T15:07:06.844Z [sentinelx-ai-backend] info: [SCAN-AUDIT][ip] value=123.32.323.22 rawSources={"abuseipdb":{"provider":"abuseipdb","label":"AbuseIPDB","available":false,"success":false,"status":"error","verdict":"unknown","confidence":0,"detections":0,"threatScore":0,"responseTime":4214,"lastUpdated":"2026-08-05T15:07:06.621Z","error":"Request failed with status code 422","data":null,"scanned":false},"shodan":{"provider":"shodan","label":"Shodan","available":false,"success":false,"status":"authentication_failed","verdict":"unknown","confidence":0,"detections":0,"threatScore":0,"responseTime":4427,"lastUpdated":"2026-08-05T15:07:06.844Z","error":"Forbidden","data":null,"scanned":false},"greyNoise":{"provider":"greyNoise","label":"GreyNoise","available":false,"success":false,"status":"not_configured","verdict":"unknown","confidence":0,"detections":0,"threatScore":0,"responseTime":0,"lastUpdated":null,"error":"GreyNoise not configured","data":null,"scanned":false},"ipinfo":{"provider":"ipinfo","label":"IPinfo","available":false,"success":false,"status":"service_unavailable","verdict":"unknown","confidence":0,"detections":0,"threatScore":0,"responseTime":1888,"lastUpdated":"2026-08-05T15:07:04.306Z","error":"No Data","data":null,"scanned":false},"otx":{"scanned":true,"threatScore":0,"pulseCount":0,"type":"IPv4","country":null,"city":null,"latitude":null,"longitude":null,"asn":null,"reputation":null,"malwareSamples":[],"pulses":[],"relatedUrls":[],"provider":"otx","label":"AlienVault OTX","available":true,"success":true,"status":"completed","verdict":"clean","confidence":0,"detections":0,"responseTime":1164,"lastUpdated":"2026-08-05T15:07:03.584Z","error":null,"data":{"scanned":true,"threatScore":0,"pulseCount":0,"type":"IPv4","country":null,"city":null,"latitude":null,"longitude":null,"asn":null,"reputation":null,"malwareSamples":[],"pulses":[],"relatedUrls":[]}},"criminalIp":{"scanned":true,"found":true,"isVPN":false,"isProxy":false,"isTor":false,"isHosting":false,"isDatacenter":false,"riskScore":0,"threatScore":0,"country":null,"city":null,"isp":null,"asn":null,"hostname":null,"os":null,"openPorts":[],"portCount":0,"domains":[],"domainCount":0,"tags":[],"score":null,"whois":null,"scanHistory":[],"provider":"criminalIp","label":"Criminal IP","available":true,"success":true,"status":"completed","verdict":"clean","confidence":0,"detections":0,"responseTime":907,"lastUpdated":"2026-08-05T15:07:03.330Z","error":null,"data":{"scanned":true,"found":true,"isVPN":false,"isProxy":false,"isTor":false,"isHosting":false,"isDatacenter":false,"riskScore":0,"threatScore":0,"country":null,"city":null,"isp":null,"asn":null,"hostname":null,"os":null,"openPorts":[],"portCount":0,"domains":[],"domainCount":0,"tags":[],"score":null,"whois":null,"scanHistory":[]}},"pulsedive":{"provider":"pulsedive","label":"Pulsedive","available":false,"success":false,"status":"service_unavailable","verdict":"unknown","confidence":0,"detections":0,"threatScore":0,"responseTime":1421,"lastUpdated":"2026-08-05T15:07:03.845Z","error":"No Data","data":null,"scanned":false}}
 2026-08-05T15:07:07.040Z [sentinelx-ai-backend] info: Persisted IOC: 123.32.323.22 (ip-address-v4)
 2026-08-05T15:07:07.041Z [sentinelx-ai-backend] info: Automatic persistence complete for scan: 123.32.323.22
+2026-08-05T15:44:29.670Z [sentinelx-ai-backend] error: API Error: Not authorized to access this route
+2026-08-05T15:46:11.836Z [sentinelx-ai-backend] error: API Error: Not authorized to access this route
+2026-08-05T16:30:06.643Z [sentinelx-ai-backend] info: MongoDB Host: ac-fpap7ze-shard-00-00.apyihe4.mongodb.net
+2026-08-05T16:30:06.644Z [sentinelx-ai-backend] info: MongoDB Database: sentinelx-ai
+2026-08-05T16:30:06.644Z [sentinelx-ai-backend] info: MongoDB URI: mongodb+srv://sihteam1176_db_user:J2QZcV1l8nSf2BZn@zeai-project.apyihe4.mongodb.net/sentinelx-ai?retryWrites=true&w=majority
+2026-08-05T16:30:25.854Z [sentinelx-ai-backend] info: MongoDB Host: ac-fpap7ze-shard-00-00.apyihe4.mongodb.net
+2026-08-05T16:30:25.855Z [sentinelx-ai-backend] info: MongoDB Database: sentinelx-ai
+2026-08-05T16:30:25.855Z [sentinelx-ai-backend] info: MongoDB URI: mongodb+srv://sihteam1176_db_user:J2QZcV1l8nSf2BZn@zeai-project.apyihe4.mongodb.net/sentinelx-ai?retryWrites=true&w=majority
+2026-08-05T16:30:27.963Z [sentinelx-ai-backend] info: MongoDB Host: ac-fpap7ze-shard-00-00.apyihe4.mongodb.net
+2026-08-05T16:30:27.964Z [sentinelx-ai-backend] info: MongoDB Database: sentinelx-ai
+2026-08-05T16:30:27.964Z [sentinelx-ai-backend] info: MongoDB URI: mongodb+srv://sihteam1176_db_user:J2QZcV1l8nSf2BZn@zeai-project.apyihe4.mongodb.net/sentinelx-ai?retryWrites=true&w=majority
+2026-08-05T16:30:41.881Z [sentinelx-ai-backend] info: MongoDB Host: ac-fpap7ze-shard-00-00.apyihe4.mongodb.net
+2026-08-05T16:30:41.883Z [sentinelx-ai-backend] info: MongoDB Database: sentinelx-ai
+2026-08-05T16:30:41.883Z [sentinelx-ai-backend] info: MongoDB URI: mongodb+srv://sihteam1176_db_user:J2QZcV1l8nSf2BZn@zeai-project.apyihe4.mongodb.net/sentinelx-ai?retryWrites=true&w=majority
+2026-08-05T16:30:55.210Z [sentinelx-ai-backend] info: MongoDB Host: ac-fpap7ze-shard-00-00.apyihe4.mongodb.net
+2026-08-05T16:30:55.211Z [sentinelx-ai-backend] info: MongoDB Database: sentinelx-ai
+2026-08-05T16:30:55.211Z [sentinelx-ai-backend] info: MongoDB URI: mongodb+srv://sihteam1176_db_user:J2QZcV1l8nSf2BZn@zeai-project.apyihe4.mongodb.net/sentinelx-ai?retryWrites=true&w=majority
+2026-08-05T16:31:06.931Z [sentinelx-ai-backend] info: MongoDB Host: ac-fpap7ze-shard-00-00.apyihe4.mongodb.net
+2026-08-05T16:31:06.933Z [sentinelx-ai-backend] info: MongoDB Database: sentinelx-ai
+2026-08-05T16:31:06.933Z [sentinelx-ai-backend] info: MongoDB URI: mongodb+srv://sihteam1176_db_user:J2QZcV1l8nSf2BZn@zeai-project.apyihe4.mongodb.net/sentinelx-ai?retryWrites=true&w=majority
+2026-08-05T16:31:52.839Z [sentinelx-ai-backend] info: MongoDB Host: ac-fpap7ze-shard-00-00.apyihe4.mongodb.net
+2026-08-05T16:31:52.841Z [sentinelx-ai-backend] info: MongoDB Database: sentinelx-ai
+2026-08-05T16:31:52.841Z [sentinelx-ai-backend] info: MongoDB URI: mongodb+srv://sihteam1176_db_user:J2QZcV1l8nSf2BZn@zeai-project.apyihe4.mongodb.net/sentinelx-ai?retryWrites=true&w=majority
+2026-08-05T16:32:27.867Z [sentinelx-ai-backend] info: MongoDB Host: ac-fpap7ze-shard-00-00.apyihe4.mongodb.net
+2026-08-05T16:32:27.868Z [sentinelx-ai-backend] info: MongoDB Database: sentinelx-ai
+2026-08-05T16:32:27.868Z [sentinelx-ai-backend] info: MongoDB URI: mongodb+srv://sihteam1176_db_user:J2QZcV1l8nSf2BZn@zeai-project.apyihe4.mongodb.net/sentinelx-ai?retryWrites=true&w=majority
+2026-08-05T16:32:43.544Z [sentinelx-ai-backend] info: MongoDB Host: ac-fpap7ze-shard-00-00.apyihe4.mongodb.net
+2026-08-05T16:32:43.545Z [sentinelx-ai-backend] info: MongoDB Database: sentinelx-ai
+2026-08-05T16:32:43.545Z [sentinelx-ai-backend] info: MongoDB URI: mongodb+srv://sihteam1176_db_user:J2QZcV1l8nSf2BZn@zeai-project.apyihe4.mongodb.net/sentinelx-ai?retryWrites=true&w=majority
+2026-08-05T16:32:55.017Z [sentinelx-ai-backend] info: MongoDB Host: ac-fpap7ze-shard-00-00.apyihe4.mongodb.net
+2026-08-05T16:32:55.019Z [sentinelx-ai-backend] info: MongoDB Database: sentinelx-ai
+2026-08-05T16:32:55.019Z [sentinelx-ai-backend] info: MongoDB URI: mongodb+srv://sihteam1176_db_user:J2QZcV1l8nSf2BZn@zeai-project.apyihe4.mongodb.net/sentinelx-ai?retryWrites=true&w=majority
+2026-08-05T16:33:11.827Z [sentinelx-ai-backend] info: MongoDB Host: ac-fpap7ze-shard-00-00.apyihe4.mongodb.net
+2026-08-05T16:33:11.828Z [sentinelx-ai-backend] info: MongoDB Database: sentinelx-ai
+2026-08-05T16:33:11.829Z [sentinelx-ai-backend] info: MongoDB URI: mongodb+srv://sihteam1176_db_user:J2QZcV1l8nSf2BZn@zeai-project.apyihe4.mongodb.net/sentinelx-ai?retryWrites=true&w=majority
+2026-08-05T16:33:24.432Z [sentinelx-ai-backend] info: MongoDB Host: ac-fpap7ze-shard-00-00.apyihe4.mongodb.net
+2026-08-05T16:33:24.433Z [sentinelx-ai-backend] info: MongoDB Database: sentinelx-ai
+2026-08-05T16:33:24.434Z [sentinelx-ai-backend] info: MongoDB URI: mongodb+srv://sihteam1176_db_user:J2QZcV1l8nSf2BZn@zeai-project.apyihe4.mongodb.net/sentinelx-ai?retryWrites=true&w=majority
+2026-08-05T16:34:50.768Z [sentinelx-ai-backend] info: MongoDB Host: ac-fpap7ze-shard-00-00.apyihe4.mongodb.net
+2026-08-05T16:34:50.770Z [sentinelx-ai-backend] info: MongoDB Database: sentinelx-ai
+2026-08-05T16:34:50.770Z [sentinelx-ai-backend] info: MongoDB URI: mongodb+srv://sihteam1176_db_user:J2QZcV1l8nSf2BZn@zeai-project.apyihe4.mongodb.net/sentinelx-ai?retryWrites=true&w=majority
+2026-08-05T16:36:04.240Z [sentinelx-ai-backend] info: MongoDB Host: ac-fpap7ze-shard-00-00.apyihe4.mongodb.net
+2026-08-05T16:36:04.242Z [sentinelx-ai-backend] info: MongoDB Database: sentinelx-ai
+2026-08-05T16:36:04.250Z [sentinelx-ai-backend] info: MongoDB URI: mongodb+srv://sihteam1176_db_user:J2QZcV1l8nSf2BZn@zeai-project.apyihe4.mongodb.net/sentinelx-ai?retryWrites=true&w=majority

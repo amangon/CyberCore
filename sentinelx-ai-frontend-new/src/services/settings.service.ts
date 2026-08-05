@@ -1,4 +1,4 @@
-import { apiRequest, getApiErrorMessage } from "@/lib/api";
+import { apiRequest, getApiErrorMessage, API_BASE_URL } from "@/lib/api";
 import type {
   ApiKey,
   ApiSettings,
@@ -246,9 +246,9 @@ export async function regenerateApiKey(id: string): Promise<ApiKey & { key: stri
 export async function getApiSettings(): Promise<ApiSettings> {
   const keys = await getApiKeys();
 
-  return {
+return {
     apiKeys: keys,
-    webhookEndpoint: `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5001'}/api/webhooks`,
+    webhookEndpoint: `${API_BASE_URL}/webhooks`,
     rateLimitPerMinute: 60,
     retryCount: 3,
     connectedServices: [],

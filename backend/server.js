@@ -11,6 +11,7 @@ const morgan = require('morgan');
 const compression = require('compression');
 const cookieParser = require('cookie-parser');
 const { swaggerUi, swaggerSpec } = require('./config/swagger');
+const { corsOptions } = require('./config/corsOptions');
 const errorHandler = require('./middleware/errorHandler');
 const notFound = require('./middleware/notFound');
 const connectDB = require('./config/db');
@@ -26,19 +27,12 @@ connectDB();
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
-  cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
-    methods: ['GET', 'POST'],
-    credentials: true
-  }
+  cors: corsOptions,
 });
 
 // Middleware
 app.use(helmet());
-app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
-  credentials: true
-}));
+app.use(cors(corsOptions));
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
