@@ -10,7 +10,24 @@ import { getToken, removeToken } from "./auth";
  *
  *   NEXT_PUBLIC_API_BASE_URL=http://localhost:5001/api
  */
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://cybercore-backend-csqd.onrender.com/api";
+/**
+ * Normalize the backend API base URL so it ALWAYS ends with exactly one
+ * `/api` segment. This guards against duplicate `/api` (`.../api/api/...`)
+ * and missing `/api` (`.../scan/...` → 404) misconfiguration, no matter what
+ * is set in the Render dashboard `NEXT_PUBLIC_API_BASE_URL` variable.
+ */
+function normalizeApiBaseUrl(input: string): string {
+  let url = input.trim();
+  // Strip any trailing slashes for consistent concatenation.
+  url = url.replace(/\/+$/, "");
+  // Remove a trailing "/api" if present so we can re-append exactly one.
+  url = url.replace(/\/api$/i, "");
+  return `${url}/api`;
+}
+
+export const API_BASE_URL = normalizeApiBaseUrl(
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://cybercore-backend-csqd.onrender.com/api",
+);
 
 /**
  * Reusable Axios instance configured for the SentinelX AI backend.
