@@ -41,6 +41,10 @@ export const API_BASE_URL = normalizeApiBaseUrl(
 export const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30_000,
+  // Send credentials (cookies) with cross-origin requests so cookie-based
+  // auth works in addition to the Bearer header. Backend CORS sets
+  // `credentials: true` to match.
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
     Accept: "application/json",
