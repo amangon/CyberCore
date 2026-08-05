@@ -80,16 +80,26 @@ async function checkUrl(url, apiKey) {
       const result = parseResponse(response.data, url);
       setCache(cacheKey, result);
       return result;
-    } catch (error) {
-      if (error.response?.status === 429) {
+} catch (error) {
+      const status = error.response?.status;
+      // Retry ONLY transient failures: 429 (rate limit) and network errors.
+      // Never retry 400/401/403/404 or other client errors.
+      const isNetwork = !error.response || ['ECONNABORTED', 'ENOTFOUND', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ENETUNREACH', 'EPIPE'].includes(error.code);
+      const isRateLimited = status === 429;
+
+      if (isRateLimited) {
         await sleep(2000 * attempt);
+        continue;
+      }
+      if (isNetwork && attempt < MAX_RETRIES) {
+        await sleep(1000 * attempt);
         continue;
       }
       if (attempt === MAX_RETRIES) {
         logger.error(`Google Safe Browsing check failed for URL ${url}: ${error.message}`);
         return { error: error.message, scanned: false };
       }
-      await sleep(1000 * attempt);
+      throw error;
     }
   }
 }

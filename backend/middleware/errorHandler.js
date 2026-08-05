@@ -1,7 +1,10 @@
 const winston = require('../utils/logger');
 
 const errorHandler = (err, req, res, next) => {
-  let statusCode = res.statusCode === 200 ? 500 : res.statusCode;
+  // Use the statusCode from the ErrorResponse object first, then fall back to res.statusCode,
+  // and only default to 500 if neither is set. This prevents 401/403/404 from being
+  // wrongly overridden to 500 when res.statusCode is still 200 at the time of the error.
+  let statusCode = err.statusCode || (res.statusCode !== 200 ? res.statusCode : 500);
   let message = err.message || 'Internal Server Error';
 
   // Log the error

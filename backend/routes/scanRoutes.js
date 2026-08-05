@@ -87,6 +87,39 @@ router.post('/', upload.single('file'), handleFileUpload, scan);
 
 /**
  * @swagger
+ * /api/scan/analyze:
+ *   post:
+ *     summary: Alias for POST /api/scan — scan any indicator type
+ *     description: Same as POST /api/scan. Accepts { value, type } in body.
+ *     tags: [Scan]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [value, type]
+ *             properties:
+ *               value:
+ *                 type: string
+ *                 description: The indicator to scan (IP, URL, domain, or hash)
+ *               type:
+ *                 type: string
+ *                 enum: [ip, url, domain, hash]
+ *     responses:
+ *       200:
+ *         description: Scan results
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Not authorized
+ */
+router.post('/analyze', upload.single('file'), handleFileUpload, scan);
+
+/**
+ * @swagger
  * /api/scan/file:
  *   post:
  *     summary: Scan a file for malware
@@ -269,6 +302,29 @@ router.post('/hash', (req, res, next) => {
   req.body.type = 'hash';
   next();
 }, scan);
+
+/**
+ * @swagger
+ * /api/scan/history:
+ *   get:
+ *     summary: Get scan history (persisted to MongoDB)
+ *     tags: [Scan]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Scan history list
+ */
+router.get('/history', getScanHistory);
 
 /**
  * @swagger

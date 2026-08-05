@@ -15,7 +15,7 @@ exports.protect = asyncHandler(async (req, res, next) => {
     token = req.headers.authorization.split(' ')[1];
   }
   // Check for token in cookies
-  else if (req.cookies.token) {
+  else if (req.cookies && req.cookies.token) {
     token = req.cookies.token;
   }
 
@@ -29,14 +29,22 @@ exports.protect = asyncHandler(async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     // Get user from the token
-    req.user = await User.findById(decoded.id);
+    const user = await User.findById(decoded.id);
 
-    if (!req.user) {
-      return next(new ErrorResponse('User not found', 404));
+    if (!user) {
+      return next(new ErrorResponse('User not found', 401));
     }
 
+    if (!user.isActive) {
+      return next(new ErrorResponse('Account is deactivated', 401));
+    }
+
+    req.user = user;
     next();
   } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      return next(new ErrorResponse('Token has expired', 401));
+    }
     return next(new ErrorResponse('Not authorized to access this route', 401));
   }
 });
@@ -44,10 +52,10 @@ exports.protect = asyncHandler(async (req, res, next) => {
 // Grant access to specific roles
 exports.authorize = (...roles) => {
   return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
+    if (!req.user || !roles.includes(req.user.role)) {
       return next(
         new ErrorResponse(
-          `User role ${req.user.role} is not authorized to access this route`,
+          `User role ${req.user ? req.user.role : 'unknown'} is not authorized to access this route`,
           403
         )
       );

@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -67,6 +69,8 @@ app.get('/api/health', (req, res) => {
 // API Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
+app.use('/api/organizations', require('./routes/organizations'));
+app.use('/api/teams', require('./routes/teams'));
 app.use('/api/assets', require('./routes/assets'));
 app.use('/api/alerts', require('./routes/alerts'));
 app.use('/api/incidents', require('./routes/incidents'));
@@ -75,6 +79,9 @@ app.use('/api/threats', require('./routes/threats'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/scan', require('./routes/scanRoutes'));
 app.use('/api/v1/scan', require('./routes/scanRoutes'));
+app.use('/api/ai', require('./routes/ai'));
+app.use('/api/settings', require('./routes/settings'));
+app.use('/api/reports', require('./routes/reports'));
 
 // Initialize Socket.io
 initializeSocket(io);

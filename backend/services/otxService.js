@@ -36,12 +36,23 @@ async function makeRequest(url, apiKey, retries = MAX_RETRIES) {
       setCache(url, response.data);
       return response.data;
     } catch (error) {
-      if (error.response?.status === 429) {
+      const status = error.response?.status;
+
+      // Retry ONLY transient failures: 429 (rate limit) and network errors.
+      // Never retry 400/401/403/404 or other client errors.
+      const isNetwork = !error.response || ['ECONNABORTED', 'ENOTFOUND', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN']
+        .includes(error.code);
+      const isRateLimited = status === 429;
+
+      if (isRateLimited) {
         await sleep(2000 * attempt);
         continue;
       }
-      if (attempt === retries) throw error;
-      await sleep(1000 * attempt);
+      if (isNetwork && attempt < retries) {
+        await sleep(1000 * attempt);
+        continue;
+      }
+      throw error;
     }
   }
 }
@@ -102,16 +113,47 @@ async function lookupDomain(domain, apiKey) {
 
 /**
  * Lookup a URL on AlienVault OTX
+ *
+ * OTX only supports URL lookups for URLs that have been seen on their feeds.
+ * It requires the URL base64-encoded (no padding) in the `indicators/url`
+ * endpoint. A URL that cannot be represented (e.g. malformed) or that OTX
+ * rejects with 400 is surfaced as "Unsupported URL" / "No Result" instead of
+ * a generic "Bad Request" error.
+ *
  * @param {string} url - URL
  * @param {string} apiKey - OTX API key
  * @returns {Object} OTX intelligence data
  */
 async function lookupURL(url, apiKey) {
   try {
+    // Validate the URL before encoding — invalid URLs are never sent upstream.
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch (e) {
+      return { scanned: true, found: false, threatScore: 0, pulseCount: 0, message: 'Unsupported URL' };
+    }
+    if (!/^https?:$/.test(parsed.protocol)) {
+      return { scanned: true, found: false, threatScore: 0, pulseCount: 0, message: 'Unsupported URL' };
+    }
+
     const encodedUrl = Buffer.from(url).toString('base64').replace(/=/g, '');
     const data = await makeRequest(`${BASE_URL}/indicators/url/${encodedUrl}/general`, apiKey);
     return parseUrlResponse(data);
   } catch (error) {
+    const status = error.response?.status;
+    // 400 means OTX doesn't accept this URL representation (e.g. unsupported
+    // scheme or non-canonical form). Surface as "No Result", never as a hard
+    // failure — the rest of the scan pipeline must continue.
+    if (status === 400) {
+      return { scanned: true, found: false, threatScore: 0, pulseCount: 0, message: 'Unsupported URL' };
+    }
+    if (status === 404) {
+      return { scanned: true, found: false, threatScore: 0, pulseCount: 0, message: 'No Result' };
+    }
+    if (status === 401 || status === 403) {
+      return { scanned: false, error: status === 401 ? 'Authentication Failed' : 'Forbidden' };
+    }
     logger.error(`OTX URL lookup failed for ${url}: ${error.message}`);
     return { error: error.message, scanned: false };
   }

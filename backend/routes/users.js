@@ -8,14 +8,18 @@ const User = require('../models/User');
 // Protect all routes
 router.use(protect);
 
-// User management routes
+// Static sub-paths MUST come before /:id to avoid Express matching them as an id
+router.get('/organization/:orgId', userController.getUsersByOrganization);
+router.get('/team/:teamId', userController.getUsersByTeam);
+
+// Collection routes
 router.get('/', advancedResults(User), userController.getUsers);
-router.get('/:id', userController.getUser);
 router.post('/', authorize('admin'), userController.createUser);
+
+// Dynamic /:id routes
+router.get('/:id', userController.getUser);
 router.put('/:id', authorize('admin'), userController.updateUser);
 router.delete('/:id', authorize('admin'), userController.deleteUser);
 router.put('/:id/toggle-status', authorize('admin'), userController.toggleUserStatus);
-router.get('/organization/:orgId', userController.getUsersByOrganization);
-router.get('/team/:teamId', userController.getUsersByTeam);
 
 module.exports = router;

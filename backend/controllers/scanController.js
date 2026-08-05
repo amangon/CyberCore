@@ -1,6 +1,10 @@
 const asyncHandler = require('../middleware/async');
 const ErrorResponse = require('../utils/errorResponse');
 const logger = require('../utils/logger');
+const ScanRecord = require('../models/ScanRecord');
+const IOC = require('../models/IOC');
+const ThreatIntelligence = require('../models/ThreatIntelligence');
+const Vulnerability = require('../models/Vulnerability');
 
 // Import all services
 const virusTotalService = require('../services/virusTotalService');
@@ -16,6 +20,7 @@ const abusechService = require('../services/abusechService');
 const greyNoiseService = require('../services/greyNoiseService');
 const pulsediveService = require('../services/pulsediveService');
 const criminalIpService = require('../services/criminalIpService');
+const { runProviders } = require('../services/providerRunner');
 
 // In-memory request cache (5 min TTL)
 const scanCache = new Map();
@@ -65,36 +70,154 @@ function detectInputType(value) {
 }
 
 /**
- * Calculate overall threat score from multiple source scores
- * Weighted average with emphasis on higher scores
- */
-function calculateOverallThreatScore(scores) {
-  const validScores = scores.filter(s => typeof s === 'number' && s >= 0);
-  if (validScores.length === 0) return 0;
-
-  // Weighted: higher scores get more weight (emphasizing threats)
-  const weightedSum = validScores.reduce((sum, score) => {
-    const weight = 1 + (score / 100); // Higher scores get more weight
-    return sum + (score * weight);
-  }, 0);
-
-  const totalWeight = validScores.reduce((sum, score) => {
-    return sum + 1 + (score / 100);
-  }, 0);
-
-  const average = weightedSum / totalWeight;
-  return Math.min(Math.round(average), 100);
-}
-
-/**
- * Determine risk level from threat score
+ * Determine risk level from threat score.
+ * Thresholds are evidence-based and consistent with the score mapping.
  */
 function getRiskLevel(score) {
-  if (score <= 20) return 'Safe';
+  if (score <= 0) return 'Safe';
   if (score <= 40) return 'Low';
   if (score <= 60) return 'Medium';
   if (score <= 80) return 'High';
   return 'Critical';
+}
+
+/**
+ * Build a fully evidence-based detection summary from the actual provider
+ * responses. Risk is only ever derived from real detections reported by the
+ * providers — never inferred. This is the SINGLE source of truth for every
+ * downstream field (status, risk level, detection status, engines, etc.).
+ *
+ * @param {string} scanType - 'hash' | 'ip' | 'url' | 'domain' | 'file'
+ * @param {Object} sources - The aggregated provider sources
+ * @returns {Object} Detection summary
+ */
+function buildDetectionSummary(scanType, sources) {
+  const virustotal = sources.virustotal || {};
+  const vtStats = virustotal.last_analysis_stats || {};
+
+  // 1. VirusTotal detection counts (both the parsed and raw layouts)
+  const vtMalicious = Number(virustotal.malicious) || Number(vtStats.malicious) || 0;
+  const vtSuspicious = Number(virustotal.suspicious) || Number(vtStats.suspicious) || 0;
+  const vtHarmless = Number(virustotal.harmless) || Number(vtStats.harmless) || 0;
+  const vtUndetected = Number(virustotal.undetected) || Number(vtStats.undetected) || 0;
+  const vtTimeout = Number(virustotal.timeout) || Number(vtStats.timeout) || 0;
+  const vtTotal = vtMalicious + vtSuspicious + vtHarmless + vtUndetected + vtTimeout;
+
+  // 2. OTX pulse count (real pulse reports)
+  const otx = sources.otx || {};
+  const otxPulseCount = Number(otx.pulseCount) || 0;
+
+  // 3. AbuseIPDB (IP scans only — real reported abuse confidence)
+  const abuseipdb = sources.abuseipdb || {};
+  const abuseConfidence = Number(abuseipdb.abuseConfidenceScore) || 0;
+
+  // 4. ThreatFox (real IOC match)
+  const threatFox = sources.abusechThreatFox || {};
+  const threatFoxFound = threatFox.found === true;
+
+  // 5. MalwareBazaar (real malware sample match)
+  const malwareBazaar = sources.abusechMalwareBazaar || {};
+  const malwareBazaarFound = malwareBazaar.found === true;
+
+  // Threat family (only from a real provider match)
+  let threatFamily = '';
+  if (otx.malwareFamily) {
+    threatFamily = String(otx.malwareFamily);
+  } else if (malwareBazaar.samples && malwareBazaar.samples.length > 0) {
+    threatFamily = String(
+      malwareBazaar.samples[0].malwareFamily || malwareBazaar.samples[0].signature || ''
+    );
+  } else if (threatFox.iocs && threatFox.iocs.length > 0) {
+    threatFamily = String(
+      threatFox.iocs[0].malware || threatFox.iocs[0].malwarePrintable || ''
+    );
+  }
+
+  // Detection engines "X/Y" and count
+  const detectionCount = vtMalicious + vtSuspicious;
+  const detectionEngines = vtTotal > 0 ? `${detectionCount}/${vtTotal}` : '';
+
+  // Blacklist status (only from a real provider indicator)
+  let blacklistStatus = '';
+  if (abuseipdb.isWhitelisted === true) blacklistStatus = 'Whitelisted';
+  else if (abuseConfidence > 0) blacklistStatus = 'Reported';
+  else if (threatFoxFound || malwareBazaarFound) blacklistStatus = 'Listed';
+  else blacklistStatus = 'Not Listed';
+
+  // Reputation (only when a provider actually returns one)
+  let reputation = '';
+  if (virustotal.reputation !== undefined && virustotal.reputation !== null) {
+    reputation = String(virustotal.reputation);
+  } else if (otx.reputation !== undefined && otx.reputation !== null) {
+    reputation = String(otx.reputation);
+  }
+
+  // ---- Evidence-based risk score ----
+  // Start at 0. Only add risk when a provider actually reports detections.
+  let riskScore = 0;
+
+  // VirusTotal: strongest signal. Uses the real malicious+suspicious ratio.
+  if (vtTotal > 0) {
+    const vtRatio = detectionCount / vtTotal;
+    riskScore = Math.max(riskScore, Math.round(vtRatio * 100));
+  }
+
+  // OTX: pulse count directly indicates real indicators of compromise.
+  if (otxPulseCount > 0) {
+    riskScore = Math.max(riskScore, Math.min(otxPulseCount * 10, 100));
+  }
+
+  // AbuseIPDB: real reported abuse confidence (IP scans only).
+  if (abuseConfidence > 0) {
+    riskScore = Math.max(riskScore, Math.min(abuseConfidence, 100));
+  }
+
+  // ThreatFox / MalwareBazaar: a real match is a confirmed detection.
+  if (threatFoxFound) riskScore = Math.max(riskScore, 60);
+  if (malwareBazaarFound) riskScore = Math.max(riskScore, 70);
+
+  riskScore = Math.min(100, Math.round(riskScore));
+
+  // ---- Derive status / detection status / risk level / AI verdict ----
+  const riskLevel = getRiskLevel(riskScore);
+
+  let status;
+  if (riskScore === 0) status = 'Safe';
+  else if (riskScore <= 40) status = 'Low';
+  else if (riskScore <= 60) status = 'Suspicious';
+  else status = 'Malicious';
+
+  let detectionStatus;
+  if (detectionCount > 0) {
+    detectionStatus = `Malicious (${detectionCount} engine${detectionCount === 1 ? '' : 's'})`;
+  } else if (threatFoxFound || malwareBazaarFound) {
+    detectionStatus = 'Threat Detected';
+  } else if (otxPulseCount > 0) {
+    detectionStatus = 'Suspicious';
+  } else if (abuseConfidence > 0) {
+    detectionStatus = 'Reported';
+  } else {
+    detectionStatus = 'No Threat Detected';
+  }
+
+  let aiVerdict;
+  if (riskScore === 0) aiVerdict = 'Safe';
+  else if (riskScore <= 40) aiVerdict = 'Low Risk';
+  else if (riskScore <= 60) aiVerdict = 'Suspicious';
+  else aiVerdict = 'Malicious';
+
+  return {
+    riskScore,
+    riskLevel,
+    status,
+    detectionStatus,
+    detectionEngines,
+    detectionCount: String(detectionCount),
+    threatFamily,
+    blacklistStatus,
+    reputation,
+    aiVerdict,
+  };
 }
 
 /**
@@ -188,7 +311,7 @@ exports.scan = asyncHandler(async (req, res, next) => {
   let results = {};
 
   try {
-    switch (scanType) {
+switch (scanType) {
       case 'file':
         results = await scanFile(scanValue, file);
         break;
@@ -208,15 +331,57 @@ exports.scan = asyncHandler(async (req, res, next) => {
         return next(new ErrorResponse(`Unsupported scan type: ${scanType}`, 400));
     }
 
-    // Calculate overall threat score
-    const scores = [];
-    Object.values(results.sources).forEach(source => {
-      if (source && typeof source.threatScore === 'number') {
-        scores.push(source.threatScore);
-      }
-    });
-    const overallThreatScore = calculateOverallThreatScore(scores);
-    const riskLevel = getRiskLevel(overallThreatScore);
+    // If URL validation failed, return immediately without contacting providers.
+    if (results.validationError) {
+      const response = {
+        success: false,
+        scanType,
+        value: scanValue,
+        overallThreatScore: 0,
+        riskLevel: 'Safe',
+        status: 'Safe',
+        threatLevel: 'Safe',
+        detectionStatus: results.validationError,
+        detectionEngines: '',
+        detectionCount: '',
+        threatFamily: '',
+        blacklistStatus: '',
+        reputation: '',
+        aiVerdict: 'Invalid Input',
+        summary: {
+          keyFindings: [results.validationError],
+          recommendations: [],
+        },
+        sources: {},
+        scannedAt: new Date().toISOString(),
+      };
+      return res.status(400).json(response);
+    }
+
+    // Log RAW provider responses for the audit trail (Step 2 of the task).
+    try {
+      const rawAudit = {};
+      Object.entries(results.sources).forEach(([name, source]) => {
+        // Only log providers that were actually contacted (scanned === true)
+        // or that returned a hard error so the audit is truthful.
+        if (source && typeof source === 'object') {
+          rawAudit[name] = source;
+        }
+      });
+      logger.info(`[SCAN-AUDIT][${scanType}] value=${scanValue} rawSources=${JSON.stringify(rawAudit)}`);
+    } catch (auditErr) {
+      logger.error(`[SCAN-AUDIT] failed to serialize raw sources: ${auditErr.message}`);
+    }
+
+    // Build the evidence-based detection summary. The backend is the single
+    // source of truth for every downstream field (risk, status, threat level,
+    // detection status, engines, AI verdict). The frontend must only render it.
+    const detection = buildDetectionSummary(scanType, results.sources);
+
+    // Keep overallThreatScore for backward compatibility, but it now equals
+    // the evidence-based risk score.
+    const overallThreatScore = detection.riskScore;
+    const riskLevel = detection.riskLevel;
 
     // Generate summary
     const summary = generateSummary(scanType, results.sources);
@@ -227,10 +392,180 @@ exports.scan = asyncHandler(async (req, res, next) => {
       value: scanValue,
       overallThreatScore,
       riskLevel,
+      status: detection.status,
+      threatLevel: detection.riskLevel,
+      detectionStatus: detection.detectionStatus,
+      detectionEngines: detection.detectionEngines,
+      detectionCount: detection.detectionCount,
+      threatFamily: detection.threatFamily,
+      blacklistStatus: detection.blacklistStatus,
+      reputation: detection.reputation,
+      aiVerdict: detection.aiVerdict,
       summary,
       sources: results.sources,
       scannedAt: new Date().toISOString()
     };
+
+    // Persist scan result to MongoDB
+    try {
+      await ScanRecord.create({
+        user: req.user.id,
+        organization: req.user.organization,
+        scanType,
+        value: scanValue,
+        overallThreatScore,
+        riskLevel,
+        status: detection.status,
+        threatLevel: detection.riskLevel,
+        detectionStatus: detection.detectionStatus,
+        detectionEngines: detection.detectionEngines,
+        detectionCount: detection.detectionCount,
+        threatFamily: detection.threatFamily,
+        blacklistStatus: detection.blacklistStatus,
+        reputation: detection.reputation,
+        aiVerdict: detection.aiVerdict,
+        sources: results.sources,
+        summary,
+        scannedAt: new Date(),
+      });
+    } catch (persistErr) {
+      logger.error(`Failed to persist scan record: ${persistErr.message}`);
+      // Non-fatal: continue even if persistence fails
+    }
+
+    // ============================================================
+    // Automatic persistence: save threat data to dedicated collections
+    // so the Threat Intelligence dashboard can query real data.
+    // ============================================================
+    try {
+      const now = new Date();
+
+// 1. Persist IOC for every scanned value (non-file scans)
+      if (scanValue && scanType !== 'file') {
+        const iocTypeMap = {
+          ip: 'ip-address-v4',
+          domain: 'domain',
+          url: 'url',
+          hash: 'file-hash-sha256',
+        };
+        const iocType = iocTypeMap[scanType] || 'other';
+
+        // Extract geolocation from scan sources for the threat map
+        const ipinfo = results.sources?.ipinfo || {};
+        const shodan = results.sources?.shodan || {};
+        const abuseipdb = results.sources?.abuseipdb || {};
+        const country = String(
+          ipinfo.country ||
+          shodan.country ||
+          abuseipdb.countryName ||
+          ''
+        ).toLowerCase();
+        const coordinates = ipinfo.coordinates || {};
+        const geolocation = {
+          country: country || undefined,
+          region: ipinfo.region ? String(ipinfo.region) : undefined,
+          city: ipinfo.city ? String(ipinfo.city) : undefined,
+          latitude: coordinates.latitude ? Number(coordinates.latitude) : (shodan.latitude ? Number(shodan.latitude) : undefined),
+          longitude: coordinates.longitude ? Number(coordinates.longitude) : (shodan.longitude ? Number(shodan.longitude) : undefined),
+          isp: ipinfo.org ? String(ipinfo.org) : (abuseipdb.isp ? String(abuseipdb.isp) : undefined),
+          organization: (ipinfo.company && ipinfo.company.name) ? String(ipinfo.company.name) : undefined,
+          asn: (ipinfo.asn && ipinfo.asn.asn) ? String(ipinfo.asn.asn) : (shodan.asn ? String(shodan.asn) : undefined),
+        };
+
+        // Check for existing IOC to avoid duplicate key errors
+        const existingIOC = await IOC.findOne({ value: scanValue, type: iocType });
+        if (!existingIOC) {
+          await IOC.create({
+            value: scanValue,
+            type: iocType,
+            description: `${scanType} indicator scanned with ${riskLevel} risk level`,
+            confidence: overallThreatScore,
+            severity: riskLevel === 'Critical' ? 'critical' : riskLevel === 'High' ? 'high' : riskLevel === 'Medium' ? 'medium' : 'low',
+            source: 'threat-intelligence',
+            sourceName: 'SentinelX Scan',
+            firstSeen: now,
+            lastSeen: now,
+            isActive: true,
+            tags: [scanType, riskLevel.toLowerCase()],
+            geolocation,
+          });
+          logger.info(`Persisted IOC: ${scanValue} (${iocType})`);
+        } else {
+          // Update last seen
+          existingIOC.lastSeen = now;
+          existingIOC.confidence = Math.max(existingIOC.confidence, overallThreatScore);
+          if (country && existingIOC.geolocation) {
+            existingIOC.geolocation.country = country;
+          }
+          await existingIOC.save();
+        }
+      }
+
+      // 2. Check if any source detected malware and persist ThreatIntelligence
+      const vtData = results.sources?.virustotal || {};
+      const otxData = results.sources?.otx || {};
+      const abuseipdbData = results.sources?.abuseipdb || {};
+      const shodanData = results.sources?.shodan || {};
+      const threatFoxData = results.sources?.abusechThreatFox || {};
+      const malwareBazaarData = results.sources?.abusechMalwareBazaar || {};
+
+      // Determine if threat data exists
+      const hasThreatData = overallThreatScore > 20 || 
+        vtData.malicious > 0 || 
+        vtData.last_analysis_stats?.malicious > 0 ||
+        Number(abuseipdbData.abuseConfidenceScore) > 0 ||
+        (threatFoxData.data && threatFoxData.data.length > 0) ||
+        (malwareBazaarData.data && malwareBazaarData.data.length > 0);
+
+      if (hasThreatData) {
+        // Check for existing threat intel
+        const existingThreat = await ThreatIntelligence.findOne({
+          'indicators.value': scanValue,
+        });
+
+        if (!existingThreat) {
+          const threatData = {
+            title: `${riskLevel} - ${scanValue}`,
+            description: `Automatically generated threat intelligence from ${scanType} scan. Risk level: ${riskLevel}, Score: ${overallThreatScore}/100`,
+            threatType: riskLevel === 'Critical' || riskLevel === 'High' ? 'malware' : 'other',
+            indicators: [{
+              type: scanType === 'ip' ? 'ip-address' : scanType === 'domain' ? 'domain' : scanType === 'url' ? 'url' : 'file-hash-sha256',
+              value: scanValue,
+              confidence: overallThreatScore,
+              severity: riskLevel === 'Critical' ? 'critical' : riskLevel === 'High' ? 'high' : riskLevel === 'Medium' ? 'medium' : 'low',
+              firstSeen: now,
+              lastSeen: now,
+              isActive: true,
+            }],
+            sources: [{
+              name: 'SentinelX Scan Engine',
+              type: 'internal',
+              isActive: true,
+              lastUpdated: now,
+            }],
+            tags: [scanType, riskLevel.toLowerCase()],
+            isActive: true,
+          };
+
+          // Add malware family if detected from OTX or VT
+          const malwareFamily = otxData.malwareFamily || (vtData.malwareFamily) || threatFoxData.malware || null;
+          if (malwareFamily) {
+            threatData.malwareFamilies = [{
+              name: malwareFamily,
+              description: `Detected during ${scanType} scan of ${scanValue}`,
+            }];
+          }
+
+          await ThreatIntelligence.create(threatData);
+          logger.info(`Persisted ThreatIntelligence for: ${scanValue}`);
+        }
+      }
+
+      logger.info(`Automatic persistence complete for scan: ${scanValue}`);
+    } catch (persistErr) {
+      logger.error(`Failed to persist threat data: ${persistErr.message}`);
+      // Non-fatal
+    }
 
     // Cache the result
     setCached(cacheKey, response);
@@ -243,264 +578,425 @@ exports.scan = asyncHandler(async (req, res, next) => {
 });
 
 /**
- * Scan a file: Upload to Cloudinary, hash, VirusTotal + ThreatFox + MalwareBazaar + OTX
+ * Derive a verdict from a provider's threatScore.
  */
-async function scanFile(fileName, fileBuffer) {
-  const sources = {};
+function verdictFromScore(score) {
+  if (typeof score !== 'number' || !Number.isFinite(score)) return 'unknown';
+  if (score >= 80) return 'malicious';
+  if (score >= 40) return 'suspicious';
+  return 'clean';
+}
 
-  // Upload to Cloudinary
-  if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
-    sources.cloudinary = await cloudinaryService.uploadFile(fileBuffer, fileName);
-  }
+/**
+ * Extract a normalized per-provider result object used by the frontend and the
+ * evidence-based detection summary.
+ *
+ * The raw provider payload is ALSO spread at the top level so downstream
+ * consumers that read top-level fields (e.g. `virustotal.malicious`,
+ * `abuseipdb.abuseConfidenceScore`, `otx.pulseCount`) keep working exactly as
+ * before. The normalized fields (provider, label, status, verdict, confidence,
+ * responseTime, error, ...) are added alongside for the provider cards.
+ */
+function normalizeSource(raw, provider, label) {
+  const status = raw.status || 'error';
+  const available = status === 'completed';
+  const score = typeof raw.threatScore === 'number' ? raw.threatScore : 0;
 
-  // Generate crypto hash
-  const crypto = require('crypto');
-  const sha256Hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
-  const md5Hash = crypto.createHash('md5').update(fileBuffer).digest('hex');
+  // A completed provider may report "no match" (e.g. OTX returns found:false
+  // with a message for a URL it has no data for). In that case the provider was
+  // contacted successfully but found nothing — surface that as "No Match" and a
+  // neutral verdict, never a misleading "clean".
+  const rawData = raw.data && typeof raw.data === 'object' ? raw.data : {};
+  const reportedNoMatch = available && rawData.found === false;
+  const reportedMessage = available && rawData.message ? String(rawData.message) : '';
 
-  // VirusTotal file scan
-  if (process.env.VIRUSTOTAL_API_KEY) {
-    sources.virustotal = await virusTotalService.scanFile(fileBuffer, fileName, process.env.VIRUSTOTAL_API_KEY);
-  }
-
-  // VirusTotal hash scan (more reliable)
-  if (process.env.VIRUSTOTAL_API_KEY) {
-    sources.virustotalHash = await virusTotalService.scanHash(sha256Hash, process.env.VIRUSTOTAL_API_KEY);
-  }
-
-  // ThreatFox search by hash
-  sources.abusechThreatFox = await abusechService.threatFoxSearch(sha256Hash);
-
-  // MalwareBazaar search by hash
-  sources.abusechMalwareBazaar = await abusechService.malwareBazaarSearch(sha256Hash);
-
-  // OTX hash lookup
-  if (process.env.OTX_API_KEY) {
-    sources.otx = await otxService.lookupHash(sha256Hash, process.env.OTX_API_KEY);
-  }
+  // Only derive a verdict from a real, available provider. A failed/timed-out
+  // provider must NEVER be labelled clean (that would be "Error + CLEAN").
+  const verdict = available && !reportedNoMatch ? verdictFromScore(score) : 'unknown';
 
   return {
-    sources: {
-      ...sources,
-      fileInfo: {
-        fileName,
-        sha256: sha256Hash,
-        md5: md5Hash
-      }
-    }
+    // Raw provider payload at the top level (preserves existing consumers).
+    ...rawData,
+    // Normalized fields for the provider cards / detection summary.
+    provider,
+    label: label || provider,
+    available,
+    success: available,
+    status: available ? (reportedNoMatch ? 'no_match' : 'completed') : (raw.error ? 'error' : status),
+    verdict,
+    confidence: available && !reportedNoMatch ? Math.min(100, Math.max(0, score)) : 0,
+    detections: available && typeof raw.data?.detections === 'number' ? raw.data.detections : 0,
+    threatScore: score,
+    responseTime: raw.responseTime || 0,
+    lastUpdated: raw.lastUpdated || null,
+    error: raw.error || (reportedNoMatch ? (reportedMessage || 'No Match') : null),
+    data: raw.data || null,
+    scanned: available,
   };
 }
 
 /**
- * Scan a URL: Google Safe Browsing + VirusTotal + URLScan + OTX + Pulsedive
+ * Scan a file: Upload to Cloudinary, hash, VirusTotal + ThreatFox +
+ * MalwareBazaar + OTX. Every provider runs independently via Promise.allSettled
+ * semantics. One provider failure never fails the whole scan.
+ */
+async function scanFile(fileName, fileData) {
+  // Extract the actual buffer from the file data object
+  const fileBuffer = fileData.buffer || fileData;
+
+  // Generate crypto hashes
+  const crypto = require('crypto');
+  const sha256Hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+  const md5Hash = crypto.createHash('md5').update(fileBuffer).digest('hex');
+
+  const hasCloudinary = Boolean(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY);
+  const hasVirusTotal = Boolean(process.env.VIRUSTOTAL_API_KEY);
+  const hasOTX = Boolean(process.env.OTX_API_KEY);
+
+  const specs = [
+    {
+      provider: 'cloudinary',
+      label: 'Cloudinary',
+      enabled: hasCloudinary,
+      configError: 'Cloudinary not configured',
+      timeoutMs: 20000,
+      run: () => cloudinaryService.uploadFile(fileBuffer, fileName),
+    },
+    {
+      provider: 'virustotal',
+      label: 'VirusTotal',
+      enabled: hasVirusTotal,
+      configError: 'VirusTotal not configured',
+      timeoutMs: 10000,
+      run: () => virusTotalService.scanFile(fileBuffer, fileName, process.env.VIRUSTOTAL_API_KEY),
+    },
+    {
+      provider: 'virustotalHash',
+      label: 'VirusTotal Hash',
+      enabled: hasVirusTotal,
+      configError: 'VirusTotal not configured',
+      timeoutMs: 10000,
+      run: () => virusTotalService.scanHash(sha256Hash, process.env.VIRUSTOTAL_API_KEY),
+    },
+    {
+      provider: 'abusechThreatFox',
+      label: 'Abuse.ch ThreatFox',
+      enabled: true,
+      configError: '',
+      timeoutMs: 8000,
+      run: () => abusechService.threatFoxSearch(sha256Hash),
+    },
+    {
+      provider: 'abusechMalwareBazaar',
+      label: 'MalwareBazaar',
+      enabled: true,
+      configError: '',
+      timeoutMs: 8000,
+      run: () => abusechService.malwareBazaarSearch(sha256Hash),
+    },
+    {
+      provider: 'otx',
+      label: 'AlienVault OTX',
+      enabled: hasOTX,
+      configError: 'OTX not configured',
+      timeoutMs: 8000,
+      run: () => otxService.lookupHash(sha256Hash, process.env.OTX_API_KEY),
+    },
+  ];
+
+  const results = await runProviders(specs);
+
+  // Build the sources object for the existing response shape.
+  const sources = {};
+  results.forEach((r) => {
+    sources[r.provider] = normalizeSource(r, r.provider, r.label);
+  });
+
+  sources.fileInfo = {
+    fileName,
+    sha256: sha256Hash,
+    md5: md5Hash,
+  };
+
+  return { sources };
+}
+
+/**
+ * Scan a URL: Google Safe Browsing + VirusTotal + URLScan + OTX + Pulsedive.
+ * Every provider runs independently via runProviders and is normalized so the
+ * frontend provider cards render real status/verdict/confidence/response-time
+ * data.
  */
 async function scanURL(url) {
+  const hasGSB = Boolean(process.env.GOOGLE_SAFE_BROWSING_API_KEY);
+  const hasVirusTotal = Boolean(process.env.VIRUSTOTAL_API_KEY);
+  const hasURLScan = Boolean(process.env.URLSCAN_API_KEY);
+  const hasOTX = Boolean(process.env.OTX_API_KEY);
+  const hasPulsedive = Boolean(process.env.PULSEDIVE_API_KEY);
+
+  // Validate the URL before it is sent to ANY provider. Invalid URLs are never
+  // sent upstream — this avoids wasting provider quota and confusing errors.
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch (e) {
+    return {
+      sources: {},
+      validationError: 'Invalid URL',
+    };
+  }
+  if (!/^https?:$/.test(parsed.protocol)) {
+    return {
+      sources: {},
+      validationError: 'Unsupported URL',
+    };
+  }
+
+  const specs = [
+{
+      provider: 'googleSafeBrowsing',
+      label: 'Google Safe Browsing',
+      enabled: hasGSB,
+      configError: 'Google Safe Browsing not configured',
+      timeoutMs: 5000,
+      run: () => googleSafeBrowsingService.checkUrl(url, process.env.GOOGLE_SAFE_BROWSING_API_KEY),
+    },
+    {
+      provider: 'virustotal',
+      label: 'VirusTotal',
+      enabled: hasVirusTotal,
+      configError: 'VirusTotal not configured',
+      timeoutMs: 10000,
+      run: () => virusTotalService.scanUrl(url, process.env.VIRUSTOTAL_API_KEY),
+    },
+    {
+      provider: 'urlscan',
+      label: 'URLScan.io',
+      enabled: hasURLScan,
+      configError: 'URLScan.io not configured',
+      timeoutMs: 12000,
+      run: () => urlscanService.scanUrl(url, process.env.URLSCAN_API_KEY),
+    },
+    {
+      provider: 'otx',
+      label: 'AlienVault OTX',
+      enabled: hasOTX,
+      configError: 'OTX not configured',
+      timeoutMs: 8000,
+      run: () => otxService.lookupURL(url, process.env.OTX_API_KEY),
+    },
+    {
+      provider: 'pulsedive',
+      label: 'Pulsedive',
+      enabled: hasPulsedive,
+      configError: 'Pulsedive not configured',
+      timeoutMs: 8000,
+      run: () => pulsediveService.lookupIndicator(url, process.env.PULSEDIVE_API_KEY),
+    },
+  ];
+
+  const results = await runProviders(specs);
+
   const sources = {};
-
-  const promises = [];
-
-  if (process.env.GOOGLE_SAFE_BROWSING_API_KEY) {
-    promises.push(
-      googleSafeBrowsingService.checkUrl(url, process.env.GOOGLE_SAFE_BROWSING_API_KEY)
-        .then(data => { sources.googleSafeBrowsing = data; })
-        .catch(err => { sources.googleSafeBrowsing = { error: err.message, scanned: false }; })
-    );
-  }
-
-  if (process.env.VIRUSTOTAL_API_KEY) {
-    promises.push(
-      virusTotalService.scanUrl(url, process.env.VIRUSTOTAL_API_KEY)
-        .then(data => { sources.virustotal = data; })
-        .catch(err => { sources.virustotal = { error: err.message, scanned: false }; })
-    );
-  }
-
-  if (process.env.URLSCAN_API_KEY) {
-    promises.push(
-      urlscanService.scanUrl(url, process.env.URLSCAN_API_KEY)
-        .then(data => { sources.urlscan = data; })
-        .catch(err => { sources.urlscan = { error: err.message, scanned: false }; })
-    );
-  }
-
-  if (process.env.OTX_API_KEY) {
-    promises.push(
-      otxService.lookupURL(url, process.env.OTX_API_KEY)
-        .then(data => { sources.otx = data; })
-        .catch(err => { sources.otx = { error: err.message, scanned: false }; })
-    );
-  }
-
-  if (process.env.PULSEDIVE_API_KEY) {
-    promises.push(
-      pulsediveService.lookupIndicator(url, process.env.PULSEDIVE_API_KEY)
-        .then(data => { sources.pulsedive = data; })
-        .catch(err => { sources.pulsedive = { error: err.message, scanned: false }; })
-    );
-  }
-
-  await Promise.allSettled(promises);
+  results.forEach((r) => {
+    sources[r.provider] = normalizeSource(r, r.provider, r.label);
+  });
 
   return { sources };
 }
 
 /**
- * Scan an IP: AbuseIPDB + Shodan + GreyNoise + IPinfo + OTX + Criminal IP + Pulsedive
+ * Scan an IP: AbuseIPDB + Shodan + GreyNoise + IPinfo + OTX + Criminal IP +
+ * Pulsedive. Every provider runs independently via runProviders and is
+ * normalized so the frontend provider cards render real status/verdict/
+ * confidence/response-time data.
  */
 async function scanIP(ip) {
+  const hasAbuseIPDB = Boolean(process.env.ABUSEIPDB_API_KEY);
+  const hasShodan = Boolean(process.env.SHODAN_API_KEY);
+  const hasGreyNoise = Boolean(process.env.GREYNOISE_API_KEY);
+  const hasIPinfo = Boolean(process.env.IPINFO_API_KEY);
+  const hasOTX = Boolean(process.env.OTX_API_KEY);
+  const hasCriminalIP = Boolean(process.env.CRIMINALIP_API_KEY);
+  const hasPulsedive = Boolean(process.env.PULSEDIVE_API_KEY);
+
+  const specs = [
+    {
+      provider: 'abuseipdb',
+      label: 'AbuseIPDB',
+      enabled: hasAbuseIPDB,
+      configError: 'AbuseIPDB not configured',
+      timeoutMs: 8000,
+      run: () => abuseIpService.checkIpReputation(ip, process.env.ABUSEIPDB_API_KEY),
+    },
+    {
+      provider: 'shodan',
+      label: 'Shodan',
+      enabled: hasShodan,
+      configError: 'Shodan not configured',
+      timeoutMs: 10000,
+      run: () => shodanService.getHostInfo(ip, process.env.SHODAN_API_KEY),
+    },
+    {
+      provider: 'greyNoise',
+      label: 'GreyNoise',
+      enabled: hasGreyNoise,
+      configError: 'GreyNoise not configured',
+      timeoutMs: 8000,
+      run: () => greyNoiseService.lookupIP(ip, process.env.GREYNOISE_API_KEY),
+    },
+    {
+      provider: 'ipinfo',
+      label: 'IPinfo',
+      enabled: true, // IPinfo works without an API key for basic lookups
+      configError: '',
+      timeoutMs: 8000,
+      run: () => ipinfoService.lookupIP(ip, hasIPinfo ? process.env.IPINFO_API_KEY : ''),
+    },
+    {
+      provider: 'otx',
+      label: 'AlienVault OTX',
+      enabled: hasOTX,
+      configError: 'OTX not configured',
+      timeoutMs: 8000,
+      run: () => otxService.lookupIP(ip, process.env.OTX_API_KEY),
+    },
+    {
+      provider: 'criminalIp',
+      label: 'Criminal IP',
+      enabled: hasCriminalIP,
+      configError: 'Criminal IP not configured',
+      timeoutMs: 8000,
+      run: () => criminalIpService.getIPIntelligence(ip, process.env.CRIMINALIP_API_KEY),
+    },
+    {
+      provider: 'pulsedive',
+      label: 'Pulsedive',
+      enabled: hasPulsedive,
+      configError: 'Pulsedive not configured',
+      timeoutMs: 8000,
+      run: () => pulsediveService.lookupIndicator(ip, process.env.PULSEDIVE_API_KEY),
+    },
+  ];
+
+  const results = await runProviders(specs);
+
   const sources = {};
-  const promises = [];
-
-  if (process.env.ABUSEIPDB_API_KEY) {
-    promises.push(
-      abuseIpService.checkIpReputation(ip, process.env.ABUSEIPDB_API_KEY)
-        .then(data => { sources.abuseipdb = data; })
-        .catch(err => { sources.abuseipdb = { error: err.message, scanned: false }; })
-    );
-  }
-
-  if (process.env.SHODAN_API_KEY) {
-    promises.push(
-      shodanService.getHostInfo(ip, process.env.SHODAN_API_KEY)
-        .then(data => { sources.shodan = data; })
-        .catch(err => { sources.shodan = { error: err.message, scanned: false }; })
-    );
-  }
-
-  if (process.env.GREYNOISE_API_KEY) {
-    promises.push(
-      greyNoiseService.lookupIP(ip, process.env.GREYNOISE_API_KEY)
-        .then(data => { sources.greyNoise = data; })
-        .catch(err => { sources.greyNoise = { error: err.message, scanned: false }; })
-    );
-  }
-
-  if (process.env.IPINFO_API_KEY) {
-    promises.push(
-      ipinfoService.lookupIP(ip, process.env.IPINFO_API_KEY)
-        .then(data => { sources.ipinfo = data; })
-        .catch(err => { sources.ipinfo = { error: err.message, scanned: false }; })
-    );
-  } else {
-    // IPinfo works without API key for basic lookups
-    promises.push(
-      ipinfoService.lookupIP(ip, '')
-        .then(data => { sources.ipinfo = data; })
-        .catch(err => { sources.ipinfo = { error: err.message, scanned: false }; })
-    );
-  }
-
-  if (process.env.OTX_API_KEY) {
-    promises.push(
-      otxService.lookupIP(ip, process.env.OTX_API_KEY)
-        .then(data => { sources.otx = data; })
-        .catch(err => { sources.otx = { error: err.message, scanned: false }; })
-    );
-  }
-
-  if (process.env.CRIMINALIP_API_KEY) {
-    promises.push(
-      criminalIpService.getIPIntelligence(ip, process.env.CRIMINALIP_API_KEY)
-        .then(data => { sources.criminalIp = data; })
-        .catch(err => { sources.criminalIp = { error: err.message, scanned: false }; })
-    );
-  }
-
-  if (process.env.PULSEDIVE_API_KEY) {
-    promises.push(
-      pulsediveService.lookupIndicator(ip, process.env.PULSEDIVE_API_KEY)
-        .then(data => { sources.pulsedive = data; })
-        .catch(err => { sources.pulsedive = { error: err.message, scanned: false }; })
-    );
-  }
-
-  await Promise.allSettled(promises);
+  results.forEach((r) => {
+    sources[r.provider] = normalizeSource(r, r.provider, r.label);
+  });
 
   return { sources };
 }
 
 /**
- * Scan a domain: OTX + Pulsedive + Criminal IP + VirusTotal
+ * Scan a domain: OTX + Pulsedive + Criminal IP + VirusTotal.
+ * Every provider runs independently via runProviders and is normalized so the
+ * frontend provider cards render real status/verdict/confidence/response-time
+ * data.
  */
 async function scanDomain(domain) {
+  const hasOTX = Boolean(process.env.OTX_API_KEY);
+  const hasPulsedive = Boolean(process.env.PULSEDIVE_API_KEY);
+  const hasCriminalIP = Boolean(process.env.CRIMINALIP_API_KEY);
+  const hasVirusTotal = Boolean(process.env.VIRUSTOTAL_API_KEY);
+
+  const specs = [
+    {
+      provider: 'otx',
+      label: 'AlienVault OTX',
+      enabled: hasOTX,
+      configError: 'OTX not configured',
+      timeoutMs: 8000,
+      run: () => otxService.lookupDomain(domain, process.env.OTX_API_KEY),
+    },
+    {
+      provider: 'pulsedive',
+      label: 'Pulsedive',
+      enabled: hasPulsedive,
+      configError: 'Pulsedive not configured',
+      timeoutMs: 8000,
+      run: () => pulsediveService.lookupIndicator(domain, process.env.PULSEDIVE_API_KEY),
+    },
+    {
+      provider: 'criminalIp',
+      label: 'Criminal IP',
+      enabled: hasCriminalIP,
+      configError: 'Criminal IP not configured',
+      timeoutMs: 8000,
+      run: () => criminalIpService.getDomainIntelligence(domain, process.env.CRIMINALIP_API_KEY),
+    },
+    {
+      provider: 'virustotal',
+      label: 'VirusTotal',
+      enabled: hasVirusTotal,
+      configError: 'VirusTotal not configured',
+      timeoutMs: 10000,
+      run: () => virusTotalService.scanDomain(domain, process.env.VIRUSTOTAL_API_KEY),
+    },
+  ];
+
+  const results = await runProviders(specs);
+
   const sources = {};
-  const promises = [];
-
-  if (process.env.OTX_API_KEY) {
-    promises.push(
-      otxService.lookupDomain(domain, process.env.OTX_API_KEY)
-        .then(data => { sources.otx = data; })
-        .catch(err => { sources.otx = { error: err.message, scanned: false }; })
-    );
-  }
-
-  if (process.env.PULSEDIVE_API_KEY) {
-    promises.push(
-      pulsediveService.lookupIndicator(domain, process.env.PULSEDIVE_API_KEY)
-        .then(data => { sources.pulsedive = data; })
-        .catch(err => { sources.pulsedive = { error: err.message, scanned: false }; })
-    );
-  }
-
-  if (process.env.CRIMINALIP_API_KEY) {
-    promises.push(
-      criminalIpService.getDomainIntelligence(domain, process.env.CRIMINALIP_API_KEY)
-        .then(data => { sources.criminalIp = data; })
-        .catch(err => { sources.criminalIp = { error: err.message, scanned: false }; })
-    );
-  }
-
-  if (process.env.VIRUSTOTAL_API_KEY) {
-    promises.push(
-      virusTotalService.scanDomain(domain, process.env.VIRUSTOTAL_API_KEY)
-        .then(data => { sources.virustotal = data; })
-        .catch(err => { sources.virustotal = { error: err.message, scanned: false }; })
-    );
-  }
-
-  await Promise.allSettled(promises);
+  results.forEach((r) => {
+    sources[r.provider] = normalizeSource(r, r.provider, r.label);
+  });
 
   return { sources };
 }
 
 /**
- * Scan a hash: VirusTotal + OTX + ThreatFox + MalwareBazaar
+ * Scan a hash: VirusTotal + OTX + ThreatFox + MalwareBazaar.
+ * Every provider runs independently via runProviders (Promise.allSettled
+ * semantics) and is normalized so the frontend provider cards render real
+ * status/verdict/confidence/response-time data.
  */
 async function scanHash(hash) {
+  const hasVirusTotal = Boolean(process.env.VIRUSTOTAL_API_KEY);
+  const hasOTX = Boolean(process.env.OTX_API_KEY);
+
+  const specs = [
+    {
+      provider: 'virustotal',
+      label: 'VirusTotal',
+      enabled: hasVirusTotal,
+      configError: 'VirusTotal not configured',
+      timeoutMs: 10000,
+      run: () => virusTotalService.scanHash(hash, process.env.VIRUSTOTAL_API_KEY),
+    },
+    {
+      provider: 'otx',
+      label: 'AlienVault OTX',
+      enabled: hasOTX,
+      configError: 'OTX not configured',
+      timeoutMs: 8000,
+      run: () => otxService.lookupHash(hash, process.env.OTX_API_KEY),
+    },
+    {
+      provider: 'abusechThreatFox',
+      label: 'Abuse.ch ThreatFox',
+      enabled: true,
+      configError: '',
+      timeoutMs: 8000,
+      run: () => abusechService.threatFoxSearch(hash),
+    },
+    {
+      provider: 'abusechMalwareBazaar',
+      label: 'MalwareBazaar',
+      enabled: true,
+      configError: '',
+      timeoutMs: 8000,
+      run: () => abusechService.malwareBazaarSearch(hash),
+    },
+  ];
+
+  const results = await runProviders(specs);
+
   const sources = {};
-  const promises = [];
-
-  if (process.env.VIRUSTOTAL_API_KEY) {
-    promises.push(
-      virusTotalService.scanHash(hash, process.env.VIRUSTOTAL_API_KEY)
-        .then(data => { sources.virustotal = data; })
-        .catch(err => { sources.virustotal = { error: err.message, scanned: false }; })
-    );
-  }
-
-  if (process.env.OTX_API_KEY) {
-    promises.push(
-      otxService.lookupHash(hash, process.env.OTX_API_KEY)
-        .then(data => { sources.otx = data; })
-        .catch(err => { sources.otx = { error: err.message, scanned: false }; })
-    );
-  }
-
-  // ThreatFox search (no API key required)
-  promises.push(
-    abusechService.threatFoxSearch(hash)
-      .then(data => { sources.abusechThreatFox = data; })
-      .catch(err => { sources.abusechThreatFox = { error: err.message, scanned: false }; })
-  );
-
-  // MalwareBazaar search (no API key required)
-  promises.push(
-    abusechService.malwareBazaarSearch(hash)
-      .then(data => { sources.abusechMalwareBazaar = data; })
-      .catch(err => { sources.abusechMalwareBazaar = { error: err.message, scanned: false }; })
-  );
-
-  await Promise.allSettled(promises);
+  results.forEach((r) => {
+    sources[r.provider] = normalizeSource(r, r.provider, r.label);
+  });
 
   return { sources };
 }
@@ -534,33 +1030,56 @@ exports.getScan = asyncHandler(async (req, res, next) => {
 });
 
 /**
- * @desc    Get scan history (recent scans)
- * @route   GET /api/history
+ * @desc    Get scan history (recent scans) from MongoDB
+ * @route   GET /api/scan/history
  * @access  Private
  */
 exports.getScanHistory = asyncHandler(async (req, res, next) => {
-  const scanHistory = [];
+  const { page = 1, limit = 50 } = req.query;
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
+  const skip = (pageNum - 1) * limitNum;
 
-  // Extract cache entries to build history
-  scanCache.forEach((entry, key) => {
-    scanHistory.push({
-      id: key,
-      scanType: entry.data.scanType,
-      value: entry.data.value,
-      overallThreatScore: entry.data.overallThreatScore,
-      riskLevel: entry.data.riskLevel,
-      scannedAt: entry.data.scannedAt,
-      cachedAt: new Date(entry.timestamp).toISOString()
-    });
-  });
+  const filter = { user: req.user.id };
+  if (req.user.organization) {
+    filter.organization = req.user.organization;
+  }
 
-  // Sort by most recent first
-  scanHistory.sort((a, b) => new Date(b.scannedAt) - new Date(a.scannedAt));
+  const [records, total] = await Promise.all([
+    ScanRecord.find(filter)
+      .sort({ scannedAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean(),
+    ScanRecord.countDocuments(filter),
+  ]);
+
+const data = records.map((r) => ({
+    id: r._id.toString(),
+    scanType: r.scanType,
+    value: r.value,
+    overallThreatScore: r.overallThreatScore,
+    riskLevel: r.riskLevel,
+    status: r.status,
+    threatLevel: r.threatLevel,
+    detectionStatus: r.detectionStatus,
+    detectionEngines: r.detectionEngines,
+    detectionCount: r.detectionCount,
+    threatFamily: r.threatFamily,
+    blacklistStatus: r.blacklistStatus,
+    reputation: r.reputation,
+    aiVerdict: r.aiVerdict,
+    scannedAt: r.scannedAt,
+    createdAt: r.createdAt,
+  }));
 
   res.status(200).json({
     success: true,
-    count: scanHistory.length,
-    data: scanHistory.slice(0, 50) // Limit to 50 most recent
+    count: data.length,
+    total,
+    page: pageNum,
+    pages: Math.ceil(total / limitNum),
+    data,
   });
 });
 

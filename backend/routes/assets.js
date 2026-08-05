@@ -1,17 +1,25 @@
 const express = require('express');
 const router = express.Router();
 const assetController = require('../controllers/assetController');
-const { protect, authorize } = require('../middleware/auth');
+const { protect } = require('../middleware/auth');
 const advancedResults = require('../middleware/advancedResults');
 const Asset = require('../models/Asset');
 
 // Protect all routes
 router.use(protect);
 
-// Asset management routes
+// Static sub-paths MUST come before /:id
+router.get('/stats', assetController.getAssetStats);
+router.get('/organization/:orgId', assetController.getAssetsByOrganization);
+router.get('/user/:userId', assetController.getAssetsByUser);
+router.get('/team/:teamId', assetController.getAssetsByTeam);
+
+// Collection routes
 router.get('/', advancedResults(Asset), assetController.getAssets);
-router.get('/:id', assetController.getAsset);
 router.post('/', assetController.createAsset);
+
+// Dynamic /:id routes
+router.get('/:id', assetController.getAsset);
 router.put('/:id', assetController.updateAsset);
 router.delete('/:id', assetController.deleteAsset);
 router.patch('/:id/status', assetController.updateAssetStatus);
@@ -21,9 +29,5 @@ router.post('/:id/scan', assetController.scanAsset);
 router.post('/:id/agent/install', assetController.installAgent);
 router.post('/:id/agent/uninstall', assetController.uninstallAgent);
 router.post('/:id/agent/checkin', assetController.updateAgentCheckin);
-router.get('/organization/:orgId', assetController.getAssetsByOrganization);
-router.get('/user/:userId', assetController.getAssetsByUser);
-router.get('/team/:teamId', assetController.getAssetsByTeam);
-router.get('/stats/:orgId?', assetController.getAssetStats);
 
 module.exports = router;
